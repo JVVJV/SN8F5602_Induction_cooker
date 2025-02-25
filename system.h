@@ -80,16 +80,16 @@ typedef enum {
 typedef enum {
     STANDBY = 0,          // 待機狀態
     HEATING,              // 加熱中
+    PERIODIC_HEATING,     // 間歇加熱中
     SHUTTING_DOWN,        // 關機狀態
     PAUSE,
     ERROR,
 } SystemState;
 
-#define CNTDOWN_TIMER_POT_CHECK       0 // 鍋具檢測間隔計時器id
-#define CNTDOWN_TIMER_POT_CONFIRM     1 // 鍋具確認計時器id
-#define CNTDOWN_TIMER_CURRENT_CHANGE  2 // 控制 3000ms 電流變化檢查倒數計時器 ID
-#define CNTDOWN_TIMER_POWER_CONTROL   3 //
-
+#define CNTDOWN_TIMER_POT_DETECT      0 // 鍋具檢測間隔計時器id
+#define CNTDOWN_TIMER_CURRENT_CHANGE  1 // 控制 3000ms 電流變化檢查倒數計時器 ID
+#define CNTDOWN_TIMER_POWER_CONTROL   2 // 控制 5ms POWER_CONTROL
+#define CNTDOWN_TIMER_I2C             3 // I2C 計時器 ID
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit f_125us;
@@ -106,12 +106,15 @@ extern uint32_t current_power;           // 目前功率
 extern uint16_t current_avg;
 extern uint16_t voltage_avg;
 
-
+extern uint16_t recorded_1000W_PW0D;
+extern uint8_t ac_half_low_ticks_avg;
 
 extern bit f_pot_detected;
+extern bit f_AC_50Hz; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**
+extern uint8_t measure_per_AC_cycle;
 
 
-
+//DEBUG
 extern  uint16_t tune_cnt;
 extern uint32_t tune_record;
 
@@ -128,10 +131,15 @@ void shutdown_process(void);
 
 void Quick_Change_Detect(void);
 void Heat_Control(void);
+void pause_heating(void);
+void Periodic_Power_Control(void);
 void Power_Control(void);
 void Pot_Detection(void);
+void Pot_Analyze(void);
 void Pot_Detection_In_Heating(void);
 void Shutdown_Task(void);
+void Measure_AC_Low_Time(void);
+void Detect_AC_Frequency(void);
 void Error_Process(void);
 
 #endif  // __SYSTEM_H__

@@ -84,7 +84,7 @@ void Temp_Measure(void)
 {
   uint16_t temp_raw;
   static uint16_t IGBT_TEMP_sum = 0;      // 累加 IGBT 溫度的變數
-  static uint16_t TOP_TEMP_sum = 0;   // 累加表面溫度的變數
+  static uint16_t TOP_TEMP_sum = 0;       // 累加表面溫度的變數
   static uint8_t Temp_Measure_cnt = 0;    // 量測次數計數器  
   
   // 呼叫通用 ADC 量測函式，量測 IGBT 溫度

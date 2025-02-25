@@ -25,14 +25,16 @@ P10 = 0;
 
 /*_____ F U N C T I O N S __________________________________________________*/
 #define MEASUREMENTS_PER_60HZ 133     // 每 60 Hz 完整週期所需的量測次數 (base on 125us)
+#define MEASUREMENTS_PER_50HZ 160     // 每 50 Hz 完整週期所需的量測次數 (base on 125us)
+
 #define CURRENT_ADC_CHANNEL       19  // OPO  定義系統電流量測的 ADC 通道 
 #define VOLTAGE_ADC_CHANNEL       7   // AIN7 定義電網電壓量測的 ADC 通道
 #define IGBT_TEMP_ADC_CHANNEL     1   // AIN1
 #define TOP_TEMP_ADC_CHANNEL      2   // AIN2
 
 #define POT_DETECT_PULSE_TIME     192         // 設定 PW0D 數值為檢鍋用值 (6us)
-#define PWM_MAX_WIDTH           960         // PWM 最大寬度   960cnt @32MHz = 30us
-//#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
+//#define PWM_MAX_WIDTH           960         // PWM 最大寬度   960cnt @32MHz = 30us
+#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
 //#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us
 //#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
 //#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
@@ -42,5 +44,10 @@ P10 = 0;
 //#define PWM_MAX_WIDTH           192         // PWM 最大寬度   192cnt @32MHz = 6us
 
 #define PWM_MIN_WIDTH   POT_DETECT_PULSE_TIME // PWM 最小寬度   192cnt @32MHz = 6us
+
+
+
+#define	I2C_SLAVE_ADDRESS					0x55
+#define I2C_INTERVAL   43    // **I2C 操作間隔 43ms**
 
 #endif  // __CONFIG_H__

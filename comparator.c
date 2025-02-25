@@ -25,7 +25,7 @@
 
 void Comparator_Init(void)
 {
-  // CM0
+  // CM0 -------------------------------------------------------
   CM0M = 0;
   // P02, P03 switch to analog pin
   P0CON |= (1<<3)|(1<<2); 
@@ -34,18 +34,32 @@ void Comparator_Init(void)
   CMDB0 = DELAY_4T | DEBOUNCE_10FCPU;
   CM0M |= mskCM0EN;
   
-  // CM1
   
+  // INTERNAL REFERENCE VOLTAGE -------------------------------------------------------
+  INTREF = mskINTREFEN | INTREF3V5;
   
+  // CM1 -------------------------------------------------------
+  // AC Power Sync.
+  CM1M = 0;
+  // CM1N
+  // P04 switch to analog pin
+  P0CON |= (1<<4);  
+  // CM1P
+  // 設定 CM1+ 端為內部參考電壓 0.5V
+  // INTERNAL 3.5V*9/64 = 0.5V (0.49V) -> CM1RS = 9 
+  CM1REF = CM1REF_INTREF | 9;
   
-  // CM2 IGBT overvoltage protect @1100V (AC power High or Pot be taken off)
+  CM1M = mskCM1EN | CM1_RISING_TRIGGER;
+  
+  IEN2 |= mskECMP1;
+  
+  // CM2 -------------------------------------------------------
+  // IGBT overvoltage protect @1100V (AC power High or Pot be taken off)
   CM2M = 0;
   // CM2N
   // P05 switch to analog pin
   P0CON |= (1<<5);  
   // CM2P
-  // INTERNAL REFERENCE VOLTAGE
-  INTREF = mskINTREFEN | INTREF3V5;
   // 1100V*2.5K/827.5K = 3.32V
   // INTERNAL 3.5V*60/64 = 3.28V -> CM2RS = 60 
   CM2REF = CM2REF_INTREF | 60; 
@@ -71,6 +85,28 @@ void comparator0_ISR(void) interrupt ISRCmp0
  
     // 其他 Comparator0 的邏輯可在此處添加
 }
+
+
+#define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
+/*
+   AC_SYNC_DEBOUNCE_TICKS 用於確保 `f_CM1_AC_sync` 只會在新的 AC 週期開始時觸發：
+   1. 當 `CM1-` 低於 `CM1+` (0.5V) 時，`CM1_ISR` 會觸發，但可能會有訊號抖動。
+   2. 此變數設定 `4ms (32 system_ticks)` 作為 debounce 時間。
+   3. `f_CM1_AC_sync` 只在 `AC_SYNC_DEBOUNCE_TICKS` 之後才允許再次觸發，防止抖動影響計時準確性。
+*/
+
+volatile bit f_CM1_AC_sync = 0;
+volatile uint8_t last_sync_tick = 0; // 記錄上次 `f_CM1_AC_sync` 設為 `1` 的時間
+
+void comparator1_ISR(void) interrupt ISRCmp1
+{
+  // **確保 `f_CM1_AC_sync` 只會在新的 AC 週期內觸發**
+  if ((uint8_t)(system_ticks - last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
+    f_CM1_AC_sync = 1;       // **標記新 AC 週期開始**
+    last_sync_tick = system_ticks; // **更新 `last_sync_tick`**
+  }
+}
+
 
 void comparator2_ISR(void) interrupt ISRCmp2
 {

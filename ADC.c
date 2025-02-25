@@ -31,11 +31,8 @@ void ADC_Init(void)
 
   ADM |= mskADENB|VOLTAGE_ADC_CHANNEL;
   // ADC calibration
-  
-  //P00 = 1; //HCW**
   ADCAL |= mskACS;
   while((ADCAL&mskACS) != 0);
-  //P00 = 0; //HCW**
   ADCAL |= mskCALIVALENB;
 }
 

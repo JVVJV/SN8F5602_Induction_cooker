@@ -21,6 +21,8 @@
 bit f_heating_initialized = 0;     // 加熱功能是否已初始化
 bit f_En_check_current_change = 1;
 
+uint8_t level = 0;
+
 static uint32_t current_sum = 0;
 static uint32_t voltage_sum = 0;
 /*_____ D E F I N I T I O N S ______________________________________________*/
@@ -32,6 +34,8 @@ static uint32_t voltage_sum = 0;
 void current_read(void);
 void voltage_read(void);
 void stop_heating(void);
+void pause_heating(void);
+void IGBT_C_slowdown(void);
 void shutdown_process(void);
 void finalize_shutdown(void);
 
@@ -45,19 +49,26 @@ void Power_read(void)
   
   // 計數 Power_read 執行次數
   pwr_read_cnt++;
-  if (pwr_read_cnt >= MEASUREMENTS_PER_60HZ) 
-  {  // 每 60 Hz 重置
+  if (pwr_read_cnt >= measure_per_AC_cycle) 
+  { // 每 50/60 Hz 重置
     //P10 = 1; //HCW**
-    
-    //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ/4096*5*61.40477; // V
-    voltage_avg = (voltage_sum*591)>>20;
-    //current_avg = current_sum/MEASUREMENTS_PER_60HZ/4096*5*1.25/47/0.01*1000;  //mA
-    current_avg = (current_sum*6399)>>18;
+    if(f_AC_50Hz){
+      //voltage_avg = voltage_sum/MEASUREMENTS_PER_50HZ/4096*5*61.40477; // V
+      voltage_avg = (voltage_sum*1965)>>22;
+      //current_avg = current_sum/MEASUREMENTS_PER_50HZ/4096*5*1.25/47/0.01*1000;  //mA
+      current_avg = (current_sum*5319)>>18;
+    }
+    else{
+      //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ/4096*5*61.40477; // V
+      voltage_avg = (voltage_sum*591)>>20;
+      //current_avg = current_sum/MEASUREMENTS_PER_60HZ/4096*5*1.25/47/0.01*1000;  //mA
+      current_avg = (current_sum*6399)>>18;
+    }
     
     current_power = (uint32_t)current_avg * voltage_avg;
     
     #if TUNE_MODE == 1
-    tune_cnt++;
+//    tune_cnt++;
 //    if(tune_cnt >= 300)
 //    {
 //      PW0M = 0;
@@ -166,9 +177,18 @@ void stop_heating(void)
     // 實現停止加熱邏輯
     P01 = 1;
     PW0M = 0;
-    
+    CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
     f_heating_initialized = 0;
 }
+
+void pause_heating(void)
+{
+  // 暫停加熱
+  PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
+  CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
+  f_heating_initialized = 0;    // Clear加熱已初始化標誌
+}
+
 void shutdown_process(void)
 {
     // 一次性停止加熱並保存狀態
@@ -183,20 +203,18 @@ void finalize_shutdown(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 typedef struct {
-    uint16_t heat_time;  // 加熱時間 (ms)
-    uint16_t rest_time;  // 休息時間 (ms)
-} IntermittentConfig;
+    uint8_t heat_cycle;  // 加熱週期數
+    uint8_t rest_cycle;  // 休息週期數
+} PeriodicConfig;
 
-const IntermittentConfig code intermittent_table[] = {
-    {1000, 5000}, // 1檔: 加熱 1 秒，休息 5 秒
-    {1000, 2000}, // 2檔: 加熱 1 秒，休息 2 秒
-    {2000, 1000}  // 3檔: 加熱 2 秒，休息 1 秒
+const PeriodicConfig code Periodic_table[] = {
+    {8, 2}, // level 0: 加熱 8 週期，休息 2 週期（對應 800000mW）
+    {5, 5}, // level 1: 加熱 5 週期，休息 5 週期（對應 500000mW）
+    {2, 8}  // level 2: 加熱 2 週期，休息 8 週期（對應 200000mW）
 };
 
 void Heat_Control(void)
 {
-  static uint8_t level = 0;
-  
   // 如果系統狀態為 ERROR
   if (system_state == ERROR) {
       return;
@@ -210,66 +228,110 @@ void Heat_Control(void)
       return;
   }
 
-  // 一般加熱模式
-  if (power_setting >= 800000) {
-      // 檢查鍋具狀態
-      if (f_pot_detected == 1) {
-          target_power = power_setting; // 設定為實際功率
-          BUZZER_ENABLE;
-          system_state = HEATING;      // 切換系統狀態為 HEATING
-      } else {
-          Pot_Detection(); // 執行鍋具檢測邏輯
-      }
+  // 檢查鍋具狀態
+  if (f_pot_detected == 0) {
+    // 啟動Fan
+    BUZZER_ENABLE;
+    
+    Pot_Detection(); // 執行鍋具檢測邏輯
+    return;
   }
-
+  
+  // 一般加熱模式
+  if (power_setting > 800000) {     
+    target_power = power_setting; // 設定為實際功率
+    system_state = HEATING;       // 切換系統狀態為 HEATING
+  }
   // 間歇加熱模式
-  if (power_setting < 800000) {
-    static bit intermittent_phase = 0;      // 0 表示加熱階段，1 表示休息階段
-    uint8_t intermittent_timer_id = 4;  // 間歇加熱專用計時器 ID
-
-    if (f_pot_detected == 1) {
-        if (!cntdown_timer_expired(intermittent_timer_id)) {
-            // 如果計時器未到期，保持當前狀態
-            return;
-        }
-        
-        // 間歇檔位判斷
-        if (power_setting == 200000) {
-            level = 0; // 1檔
-        } else if (power_setting == 400000) {
-            level = 1; // 2檔
-        } else if (power_setting == 600000) {
-            level = 2; // 3檔
-        }  
-      
-        if (intermittent_phase == 0) {
-            // 加熱階段
-            target_power = 1200000; // 設定實際功率為 1200W
-            system_state = HEATING; // 切換系統狀態為 HEATING
-            cntdown_timer_start(intermittent_timer_id, intermittent_table[level].heat_time);
-            intermittent_phase = 1; // 切換到休息階段
-        } else {
-            // 休息階段
-            target_power = 0;        // 停止加熱
-            system_state = STANDBY;  // 切換系統狀態為待機
-            stop_heating();          // 停止加熱硬體
-            cntdown_timer_start(intermittent_timer_id, intermittent_table[level].rest_time);
-            intermittent_phase = 0; // 切換到加熱階段
-        }
-    } else {
-        Pot_Detection(); // 執行鍋具檢測邏輯
+  else {
+    // 檔位判斷
+    switch (power_setting) {
+      case 800000: level = 0; break; // 1檔
+      case 500000: level = 1; break; // 2檔
+      case 200000: level = 2; break; // 3檔
+      default: return; // 確保安全
+    } 
+    if(system_state != PERIODIC_HEATING)  //HCW**
+    {
+      periodic_heat_state = PERIODIC_REST_PHASE;
     }
+    system_state = PERIODIC_HEATING; // 切換系統狀態為間歇加熱模式
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+volatile PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
+volatile uint8_t sync_count = 0;       
+volatile uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間**
+
+void Periodic_Power_Control(void) {
+    if (system_state != PERIODIC_HEATING) {
+        return;
+    }
+
+    // **檢查是否有新的 AC 訊號週期**
+    if (f_CM1_AC_sync) {
+        f_CM1_AC_sync = 0;
+        sync_count++;
+    }
+
+    switch (periodic_heat_state) {
+        case PERIODIC_REST_PHASE:
+            if (sync_count >= Periodic_table[level].rest_cycle) {
+              sync_count = 0;
+              IGBT_C_slowdown();
+              phase_start_tick = system_ticks;
+              periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
+            }
+            break;
+
+        case PERIODIC_SLOWDOWN_PHASE:
+            // **等待 `ac_half_low_ticks_avg` 週期時間，再進入加熱**
+            if ((uint8_t)(system_ticks - phase_start_tick) >= ac_half_low_ticks_avg) {
+              pause_heating();    // Stop IGBT_C_slowdown PWM
+              init_heating(PERIODIC);
+              periodic_heat_state = PERIODIC_HEAT_PHASE;
+            }
+            break;
+
+        case PERIODIC_HEAT_PHASE:
+            if (sync_count >= Periodic_table[level].heat_cycle) {
+              sync_count = 0;
+              phase_start_tick = system_ticks;
+              periodic_heat_state = PERIODIC_HEAT_END_PHASE;
+            }
+            break;
+
+        case PERIODIC_HEAT_END_PHASE:
+            // **等待 `ac_half_low_ticks_avg`，才真正停止加熱**
+            if ((uint8_t)(system_ticks - phase_start_tick) >= ac_half_low_ticks_avg) {
+              pause_heating();
+              periodic_heat_state = PERIODIC_REST_PHASE;
+            }
+            break;
+    }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define CURRENT_CHANGE_CHECK_DELAY 2000 // 電流變化檢查延遲時間 (2000ms， 1ms 為基準)
 
 // 初始化加熱功能
-void init_heating(void)
+void init_heating(HeatingMode heating_mode)
 { 
   #if TUNE_MODE == 1
   //PW0D = PWM_MAX_WIDTH;
   #endif
+  
+  // **設定 PWM 寬度**
+  if (heating_mode == NORMAL) {
+    PW0D = PWM_MIN_WIDTH;  // **一般模式：最小 PWM**
+  } else { 
+    PW0D = recorded_1000W_PW0D;  // **間歇模式：使用 `1000W` 參考值**
+  }
+  
+  // Enable PWM
+  PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;
   
   //FW啟動PWM第一次charge
   PW0M1 |= mskPGOUT;
@@ -277,12 +339,23 @@ void init_heating(void)
   
   PW0M &= ~mskPW0EN;            // Disable PWM
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
-  //CM2M |= mskCM2SF;             // 開啟 CM2SF(IGBT高壓防護), Init()已開
   PW0M |= mskPW0EN;             // Enable PWM
   
   cntdown_timer_start(CNTDOWN_TIMER_CURRENT_CHANGE, CURRENT_CHANGE_CHECK_DELAY); // 啟動2000ms倒數計時
   
   f_En_check_current_change = 0;   // 暫停檢查電流變化
   f_heating_initialized = 1;       // 設置初始化標誌
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#define SLOWDOWN_PWM_WIDTH  28    // **875ns / 31.25ns = 28 clks**
+#define SLOWDOWN_PWM_PERIOD 880   // **27.5us / 31.25ns = 880 clks**
+
+void IGBT_C_slowdown(void) {
+    PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**
+    PW0D = SLOWDOWN_PWM_WIDTH;    // **設定 PWM 脈衝寬度**
+
+    // **開啟 PWM**
+    PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPWM0OUT;
 }
 

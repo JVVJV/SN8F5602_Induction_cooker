@@ -484,6 +484,11 @@
               <FileType>1</FileType>
               <FilePath>.\buzzer.c</FilePath>
             </File>
+            <File>
+              <FileName>I2C.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\I2C.c</FilePath>
+            </File>
           </Files>
         </Group>
       </Groups>

@@ -49,6 +49,20 @@
 #define DEBOUNCE_28FCPU     (14<<0)
 #define DEBOUNCE_30FCPU     (15<<0)
 
+// CM1M
+#define mskCM1EN        (1<<7)
+#define mskCM1SF        (1<<4)
+
+#define CM1_RISING_TRIGGER    (1<<3)
+#define CM1_FALLING_TRIGGER   (0<<3)
+#define CM1_CLK_HOSC          (0<<2)
+#define CM1_CLK_FCPU          (1<<2)
+
+// CM1REF
+#define CM1REF_VDD      (0<<7)
+#define CM1REF_INTREF   (1<<7)
+
+
 // CM2M
 #define mskCM2EN    (1<<7)
 #define mskCM2SF    (1<<4)
@@ -61,8 +75,12 @@
 #define CM2REF_VDD      (0<<7)
 #define CM2REF_INTREF   (1<<7)
 
-
-
+// CMOUT
+#define mskCM4OUT     (1<<4)
+#define mskCM3OUT     (1<<3)
+#define mskCM2OUT     (1<<2)
+#define mskCM1OUT     (1<<1)
+#define mskCM0OUT     (1<<0)
 
 // INTREF
 #define mskINTREFEN   (1<<7)
@@ -85,6 +103,7 @@
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
+extern volatile bit f_CM1_AC_sync;
 
 /*_____ M A C R O S ________________________________________________________*/
 #define CM0_IRQ_ENABLE  IEN2 |= mskECMP0

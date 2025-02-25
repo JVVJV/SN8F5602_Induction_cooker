@@ -10,7 +10,7 @@
 
 /*_____ I N C L U D E S ____________________________________________________*/
 #include "PWM.h"
-
+#include "config.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -25,8 +25,8 @@
 void PWM_Init(void)
 {
   PW0M = 0;
-  PW0Y = 0xFFFF;     // 砞﹚ PW0Y 程 patch
-  //PW0D = 0x100;    // 砞﹚ PW0D 程 patch
+  PW0Y = PWM_MAX_WIDTH; // 砞﹚ PW0Y 程 patch, ňゎぃみは
+  //PW0D = 0x100;       // 砞﹚ PW0D 程 patch
   
   PW0M1 = mskSFDL;
   
