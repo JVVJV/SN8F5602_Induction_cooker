@@ -48,7 +48,7 @@ SystemState system_state = STANDBY;  // 系統初始狀態為待機
   
   #if TUNE_MODE == 1
 //  uint16_t tune_cnt = 0;
-//  uint32_t tune_record = 0;
+  uint32_t tune_record = 0;
   #endif
 
 /*_____ M A C R O S ________________________________________________________*/

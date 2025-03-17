@@ -53,15 +53,27 @@ void Power_read(void)
   { // 每 50/60 Hz 重置
     //P10 = 1; //HCW**
     if(f_AC_50Hz){
-      //voltage_avg = voltage_sum/MEASUREMENTS_PER_50HZ/4096*5*61.40477; // V
-      voltage_avg = (voltage_sum*1965)>>22;
-      //current_avg = current_sum/MEASUREMENTS_PER_50HZ/4096*5*1.25/47/0.01*1000;  //mA
+      //voltage_avg = voltage_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*61.40477; // V (->avg)
+      //voltage_avg = (voltage_sum*1965)>>22;
+      
+      //voltage_avg = voltage_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
+      //"0.0163" comes from voltage divider calculation.
+      //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
+      voltage_avg = (voltage_sum*2179)>>22;
+      
+      //current_avg = current_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*1.25/47/0.01*1000;  //mA
       current_avg = (current_sum*5319)>>18;
     }
     else{
-      //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ/4096*5*61.40477; // V
-      voltage_avg = (voltage_sum*591)>>20;
-      //current_avg = current_sum/MEASUREMENTS_PER_60HZ/4096*5*1.25/47/0.01*1000;  //mA
+      //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*61.40477; // V (->avg)
+      //voltage_avg = (voltage_sum*591)>>20;
+      
+      //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
+      //"0.0163" comes from voltage divider calculation.
+      //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
+      voltage_avg = (voltage_sum*5243)>>23;
+      
+      //current_avg = current_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*1.25/47/0.01*1000;  //mA
       current_avg = (current_sum*6399)>>18;
     }
     
@@ -74,6 +86,8 @@ void Power_read(void)
 //      PW0M = 0;
 //      while(1);
 //    }
+    
+    tune_record = voltage_avg;
     #endif
     
     pwr_read_cnt = 0;
@@ -135,13 +149,7 @@ uint16_t current_base = 0;
 
 void Measure_Base_Current(void) {
   uint16_t measured_value;
-  uint16_t T1;
-  uint16_t T2;
-  
-  T1 = BASE_CURRENT_LOWER_LIMIT;
-  T2 = BASE_CURRENT_UPPER_LIMIT;
-  
-  
+
   // 量測 ADC 基準電流值
   ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &measured_value);
   
@@ -152,7 +160,6 @@ void Measure_Base_Current(void) {
       current_base = measured_value;  // 正常範圍內則使用測得值
   }
 }
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義電壓和電流快速變化及上下限
