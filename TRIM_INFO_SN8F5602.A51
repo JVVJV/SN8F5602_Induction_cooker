@@ -11,45 +11,45 @@ $NOMOD51
 ;  <h> Trim Block
 ;    <o> IHRC Trim Value <0x000-0x3FF>
 ;      <i> information address 0x0081, 0x0082 (range: 0x000 - 0x3FF)
-IHRCTRIM_SET	EQU		0x080
+IHRCTRIM_SET	EQU		0x168
 ;    <o> IHRC Rought Trim Value <0x00-0x07>
 ;      <i> information address 0x0082 (range: 0x00 - 0x07)
-IHRCTRIM_RT_SET	EQU		0x03
+IHRCTRIM_RT_SET	EQU		0x04
 	
 ;    <o> LVDIO Trim Value <0x00-0x1F>
 ;      <i> information address 0x000 (range: 0x00 - 0x1F)
-LVDIOTRIM_SET			EQU		0x1A
-;    <o> LVDIO Reverse Value <0x00-0x1F>
-;      <i> information address 0x0021 (range: 0x00 - 0x1F)
-NOTIOTRIM_SET			EQU		0x05
+LVDIOTRIM_SET			EQU		0x10
+;    <o> LVDIO Reverse Value <0x00-0xFF>
+;      <i> information address 0x0021 (range: 0x00 - 0xFF)
+NOTIOTRIM_SET			EQU		0xEF
 ;    <o> LVDNVM Trim Value <0x00-0x0F>
 ;      <i> information address 0x0022 (range: 0x00 - 0x0F)
-LVDNVMTRIM_SET		EQU		0x06
-;    <o> LVDNVM Reverse Value <0x00-0x0F>
-;      <i> information address 0x0023 (range: 0x00 - 0x0F)
-NOTNVMTRIM_SET		EQU		0x09
+LVDNVMTRIM_SET		EQU		0x08
+;    <o> LVDNVM Reverse Value <0x00-0xFF>
+;      <i> information address 0x0023 (range: 0x00 - 0xFF)
+NOTNVMTRIM_SET		EQU		0xF7
 ;    <o> LVDLPM2 Trim Value <0x00-0x0F>
 ;      <i> information address 0x0024 (range: 0x00 - 0x0F)
-LVDLPM2TRIM_SET		EQU		0x06
+LVDLPM2TRIM_SET		EQU		0x05
 ;    <o> LVDCORE Trim Value <0x00-0x07>
 ;      <i> information address 0x0025 (range: 0x00 - 0x07)
-LVDCORETRIM_SET		EQU		0x06
+LVDCORETRIM_SET		EQU		0x03
 
 ;    <o> Regulator 1.6V Trim Value <0x00-0x0F>
 ;      <i> information address 0x0001 (range: 0x00 - 0x0F)
-LDO16TRIM_SET			EQU		0x07
+LDO16TRIM_SET			EQU		0x08
 ;    <o> ADC Trim Value <0x00-0x1F>
 ;      <i> information address 0x00A0 (range: 0x00 - 0x1F)
-ADCTRIM_SET				EQU		0x0F
+ADCTRIM_SET				EQU		0x10
 ;    <o> INTREF Trim Value <0x00-0x1F>
 ;      <i> information address 0x0010 (range: 0x00 - 0x1F)
-INTREFTRIM_SET				EQU		0x0F
+INTREFTRIM_SET				EQU		0x10
 ;    <o> OP Trim Value <0x00-0x7F>
 ;      <i> information address 0x00C0 (range: 0x00 - 0x7F)
-OPTRIM_SET				EQU		0x07	
+OPTRIM_SET				EQU		0x17	
 ;    <o> CMP0 Trim Value <0x00-0x7F>
 ;      <i> information address 0x00C0 (range: 0x00 - 0x7F)
-CMP0TRIM_SET				EQU		0x07	
+CMP0TRIM_SET				EQU		0x43	
 ;  </h>
 
 ;;------------------------------------------------------------------------------
@@ -79,9 +79,10 @@ CMP0TRIM_SET				EQU		0x07
 		DB			0xFF
 		ENDM
 		DB      ADCTRIM_SET
-		DB		INTREFTRIM_SET
-	CSEG	AT		0x48C0			;mapping to information 0x00C0			
+		DB			INTREFTRIM_SET
+	CSEG	AT		0x48B0			;mapping to information 0x00C0			
 		DB			OPTRIM_SET
+	CSEG	AT		0x48C0			;mapping to information 0x00B0					
 		DB			CMP0TRIM_SET
 				
 END			

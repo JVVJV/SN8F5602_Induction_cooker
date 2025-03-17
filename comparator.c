@@ -32,8 +32,11 @@ void Comparator_Init(void)
   
   CM0M = CM0_FALLING_TRIGGER | CM0_CLK_FCPU;
   CMDB0 = DELAY_4T | DEBOUNCE_10FCPU;
+  //CMDB0 = DELAY_0T | DEBOUNCE_0FCPU;   //HCW** for experiment
+  
   CM0M |= mskCM0EN;
   
+  //CM0_IRQ_ENABLE; //HCW** for experiment
   
   // INTERNAL REFERENCE VOLTAGE -------------------------------------------------------
   INTREF = mskINTREFEN | INTREF3V5;

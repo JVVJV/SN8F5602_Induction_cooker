@@ -123,6 +123,38 @@ void voltage_read(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#define DEFAULT_BASE_CURRENT_ADC   316   // 預設基準電流 ADC 值
+#define BASE_CURRENT_TOLERANCE     8   // 允許誤差百分比（8%）
+
+// 在編譯期間計算允許的上下限
+#define BASE_CURRENT_LOWER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 - BASE_CURRENT_TOLERANCE)) / 100)
+#define BASE_CURRENT_UPPER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 + BASE_CURRENT_TOLERANCE)) / 100)
+
+
+uint16_t current_base = 0;
+
+void Measure_Base_Current(void) {
+  uint16_t measured_value;
+  uint16_t T1;
+  uint16_t T2;
+  
+  T1 = BASE_CURRENT_LOWER_LIMIT;
+  T2 = BASE_CURRENT_UPPER_LIMIT;
+  
+  
+  // 量測 ADC 基準電流值
+  ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &measured_value);
+  
+  // 檢查是否超出允許範圍
+  if (measured_value < BASE_CURRENT_LOWER_LIMIT || measured_value > BASE_CURRENT_UPPER_LIMIT) {
+      current_base = DEFAULT_BASE_CURRENT_ADC;  // 超出範圍則使用預設值
+  } else {
+      current_base = measured_value;  // 正常範圍內則使用測得值
+  }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義電壓和電流快速變化及上下限
 #define VOLTAGE_UPPER_LIMIT 280        // 電壓上限 (單位：適當的測量單位，例如伏特)
 #define VOLTAGE_LOWER_LIMIT 90         // 電壓下限 (單位：適當的測量單位，例如伏特)

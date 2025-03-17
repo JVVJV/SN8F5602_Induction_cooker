@@ -171,7 +171,7 @@ void Update_System_Time() {
 #define PWM_ADJUST_QUICK_CHANGE 3      // 電壓快速變化時減少的 PWM 寬度
 
 uint32_t current_power = 0;           // 目前功率 mW
-uint32_t target_current = 0;          // 目標電流 mA
+uint16_t target_current = 0;          // 目標電流 mA
 //uint16_t voltage_IIR_new = 0;         // 目前濾波後電壓
 //uint16_t current_IIR_new = 0;         // 目前濾波後電流
 
@@ -179,7 +179,6 @@ uint32_t current_sum = 0;
 uint32_t voltage_sum = 0;
 uint16_t current_avg = 0;
 uint16_t voltage_avg = 0;
-
 
 // 檢查是否可以啟用電流變化檢查
 void check_enable_current_change() {
@@ -366,7 +365,7 @@ void Pot_Detection() {
         return;
       }
       // 鍋具確認完成，結束檢鍋邏輯
-      CM0_IRQ_DISABLE;
+      //CM0_IRQ_DISABLE;    //HCW** should not comment
       // 重啟檢鍋間隔計時器
       cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POT_CHECK_INTERVAL);
         
@@ -523,13 +522,17 @@ uint8_t ac_half_low_ticks_avg;
 void Measure_AC_Low_Time(void) {
     uint8_t i;
     uint8_t sum = 0;
-    uint8_t start_ticks, low_count;
+    uint8_t start_ticks;
+//  uint8_t low_count;
 
+//    // **等待中斷發生**           // It’s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM1_ISR, 
+//    while (f_CM1_AC_sync == 0);   // we can ensure the f_CM1_AC_sync is only set on the AC’s rising edge.
+  
     // 等待 AC 訊號穩定，收集 4 次數據
     for (i = 0; i < AC_PERIOD_COUNT; i++) {
       
 //      // 軟體 debounce：確保 CM1 真的回到 LOW，才清除f_CM1_AC_sync
-      low_count = 0;
+//      low_count = 0;
 //      while (low_count < PRE_CLEAR_DEBOUNCE_COUNT) {
 //        debounce_start = system_ticks;
 //        while ((system_ticks - debounce_start) < PRE_CLEAR_DEBOUNCE_INTERVAL); // 等待 `250us`

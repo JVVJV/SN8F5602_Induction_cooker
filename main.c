@@ -5,6 +5,7 @@
 * IC:			  SR56F27
 *____________________________________________________________________________
 * REVISION		Date				User		Description
+* 0.1         2025/02 
 *____________________________________________________________________________
 *****************************************************************************/
 
@@ -49,7 +50,7 @@ void Warmup_Delay(void);
 *****************************************************************************/
 void main (void)
 {
-  DEGCMD = 0x00; // Disable SWAT pin
+  //DEGCMD = 0x00; // Disable SWAT pin
   
   // 初始化模塊
   SystemCLK_Init();       // 初始化 系統頻率
@@ -59,17 +60,19 @@ void main (void)
   OP_Amp_Init();          // 初始化運算放大器，用於電流量測
   PWM_Init();             // 初始化PWM for IGBT driving
   Buzzer_Init();          // 初始化風扇驅動
-  I2C_Init();           // 初始化 I2C 接口
+  I2C_Init();             // 初始化 I2C 接口
   
   CNTdown_Timer_Init();   // 初始化倒數計時模組
   
   EAL = 1;                // 啟用全域中斷
   
   Warmup_Delay();         // 30ms
+  
   ADC_Init();             // 初始化 ADC，用於多通道量測
   
   Measure_AC_Low_Time();  // 量測AC low tume, 用於IGBT C級能量漸放時間 & 啟動間歇加熱時間點
-  Detect_AC_Frequency();
+  Detect_AC_Frequency();  // 50Hz or 60Hz
+  Measure_Base_Current(); // 量測Base電流, for OP offset
   
   // 設置初始系統狀態
   system_state = STANDBY;  // 系統默認進入待機模式
@@ -93,7 +96,7 @@ void main (void)
       Update_System_Time();  
       
       // 獨立執行任務
-      Power_read();    
+      Power_read();
           
       // 任務循環
       switch (current_task) {

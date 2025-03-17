@@ -28,6 +28,7 @@ extern volatile PeriodicHeatState periodic_heat_state;
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
+void Measure_Base_Current(void);
 void Power_read(void);
 void init_heating(HeatingMode heating_mode);
 
