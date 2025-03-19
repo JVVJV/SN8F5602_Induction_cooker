@@ -48,7 +48,7 @@ SystemState system_state = STANDBY;  // 系統初始狀態為待機
   
   #if TUNE_MODE == 1
 //  uint16_t tune_cnt = 0;
-  uint32_t tune_record = 0;
+//  uint32_t tune_record = 0;
   #endif
 
 /*_____ M A C R O S ________________________________________________________*/
@@ -167,7 +167,7 @@ void Update_System_Time() {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define VOLTAGE_THRESHOLD 220          // 電壓門檻值 (220V)
 
-#define HIGH_POWER_LEVEL 1500000       // 高功率標準 (1500mW)
+#define HIGH_POWER_LEVEL 2000000       // 高功率標準 (2000K mW)
 #define PWM_ADJUST_QUICK_CHANGE 3      // 電壓快速變化時減少的 PWM 寬度
 
 uint32_t current_power = 0;           // 目前功率 mW
@@ -177,8 +177,8 @@ uint16_t target_current = 0;          // 目標電流 mA
 
 uint32_t current_sum = 0;
 uint32_t voltage_sum = 0;
-uint16_t current_avg = 0;
-uint16_t voltage_avg = 0;
+uint16_t current_RMS_mA = 0;
+uint16_t voltage_RMS_V = 0;
 
 // 檢查是否可以啟用電流變化檢查
 void check_enable_current_change() {
@@ -264,24 +264,14 @@ void Power_Control(void)
     }
     
     // 判斷控制模式
-    if (voltage_avg >= VOLTAGE_THRESHOLD) {
+    if (voltage_RMS_V >= VOLTAGE_THRESHOLD) {
         // 恆電流控制模式
         target_current = target_power / VOLTAGE_THRESHOLD;
     } else {
         // 恆功率控制模式
-        target_current = target_power / voltage_avg;
+        target_current = target_power / voltage_RMS_V;
     }
     
-
-    #if TUNE_MODE == 1
-//    target_current = 6;
-//    current_avg = 2;
-    
-//    target_current = 4;
-//    current_avg = 8;
-    #endif
-     
-
     #if TUNE_MODE == 1
 //    tune_cnt++;
 //    if(current_power >= tune_record)
@@ -307,7 +297,7 @@ void Power_Control(void)
     
 
     // 比較目標電流與目前電流
-    if (target_current > current_avg) {
+    if (target_current > current_RMS_mA) {
       // 增加 PWM 寬度  
       Increase_PWM_Width(1); 
     } else {

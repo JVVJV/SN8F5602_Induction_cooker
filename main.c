@@ -51,6 +51,10 @@ void Warmup_Delay(void);
 void main (void)
 {
   //DEGCMD = 0x00; // Disable SWAT pin
+  #if TUNE_MODE == 1
+  OPM = 0x01;
+  OPCAL -= 6; 
+  #endif
   
   // 初始化模塊
   SystemCLK_Init();       // 初始化 系統頻率

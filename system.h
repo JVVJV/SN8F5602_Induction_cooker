@@ -103,8 +103,8 @@ extern TaskType current_task; // 當前任務
 extern uint16_t voltage_IIR_new;         // 目前濾波後電壓
 extern uint16_t current_IIR_new;         // 目前濾波後電流
 extern uint32_t current_power;           // 目前功率
-extern uint16_t current_avg;
-extern uint16_t voltage_avg;
+extern uint16_t current_RMS_mA;
+extern uint16_t voltage_RMS_V;
 extern uint16_t current_base;  // 存儲基準電流 ADC 值
 
 extern uint16_t recorded_1000W_PW0D;

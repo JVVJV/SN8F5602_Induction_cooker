@@ -11,7 +11,7 @@ $NOMOD51
 ;  <h> Trim Block
 ;    <o> IHRC Trim Value <0x000-0x3FF>
 ;      <i> information address 0x0081, 0x0082 (range: 0x000 - 0x3FF)
-IHRCTRIM_SET	EQU		0x168
+IHRCTRIM_SET	EQU		0x134
 ;    <o> IHRC Rought Trim Value <0x00-0x07>
 ;      <i> information address 0x0082 (range: 0x00 - 0x07)
 IHRCTRIM_RT_SET	EQU		0x04
@@ -46,10 +46,10 @@ ADCTRIM_SET				EQU		0x10
 INTREFTRIM_SET				EQU		0x10
 ;    <o> OP Trim Value <0x00-0x7F>
 ;      <i> information address 0x00C0 (range: 0x00 - 0x7F)
-OPTRIM_SET				EQU		0x17	
+OPTRIM_SET				EQU		0x1B	
 ;    <o> CMP0 Trim Value <0x00-0x7F>
 ;      <i> information address 0x00C0 (range: 0x00 - 0x7F)
-CMP0TRIM_SET				EQU		0x43	
+CMP0TRIM_SET				EQU		0x40	
 ;  </h>
 
 ;;------------------------------------------------------------------------------

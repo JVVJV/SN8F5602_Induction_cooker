@@ -17,6 +17,9 @@
 #include "buzzer.h"
 #include <math.h>
 
+/*_____ D E F I N I T I O N S ______________________________________________*/
+
+
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 bit f_heating_initialized = 0;     // 加熱功能是否已初始化
 bit f_En_check_current_change = 1;
@@ -25,7 +28,7 @@ uint8_t level = 0;
 
 static uint32_t current_sum = 0;
 static uint32_t voltage_sum = 0;
-/*_____ D E F I N I T I O N S ______________________________________________*/
+
 
 
 /*_____ M A C R O S ________________________________________________________*/
@@ -38,11 +41,12 @@ void pause_heating(void);
 void IGBT_C_slowdown(void);
 void shutdown_process(void);
 void finalize_shutdown(void);
-
+uint16_t current_lookup_interpolation(uint16_t adc_val);
 
 void Power_read(void)
 {
   static uint8_t pwr_read_cnt = 0;     // 紀錄執行次數
+  static uint16_t current_adc_avg = 0;
   
   current_read();  // 量測系統電流  
   voltage_read();  // 量測系統電壓
@@ -56,28 +60,40 @@ void Power_read(void)
       //voltage_avg = voltage_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*61.40477; // V (->avg)
       //voltage_avg = (voltage_sum*1965)>>22;
       
-      //voltage_avg = voltage_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
+      //voltage_RMS_V = voltage_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
       //"0.0163" comes from voltage divider calculation.
       //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
-      voltage_avg = (voltage_sum*2179)>>22;
+      voltage_RMS_V = (voltage_sum*2179)>>22;
       
-      //current_avg = current_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*1.25/47/0.01*1000;  //mA
-      current_avg = (current_sum*5319)>>18;
+      //current_adc_avg = current_sum/MEASUREMENTS_PER_50HZ(160);  // (->avg)
+      current_adc_avg = (current_sum * 3277) >> 19;
+      
     }
     else{
       //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*61.40477; // V (->avg)
       //voltage_avg = (voltage_sum*591)>>20;
       
-      //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
+      //voltage_RMS_V = voltage_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
       //"0.0163" comes from voltage divider calculation.
       //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
-      voltage_avg = (voltage_sum*5243)>>23;
+      voltage_RMS_V = (voltage_sum*5243)>>23;
       
-      //current_avg = current_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*1.25/47/0.01*1000;  //mA
-      current_avg = (current_sum*6399)>>18;
+      //current_adc_avg = current_sum/MEASUREMENTS_PER_60HZ(133); // (->avg)
+      current_adc_avg = (current_sum * 1971) >> 18;
     }
     
-    current_power = (uint32_t)current_avg * voltage_avg;
+    // Remove current_base
+    if(current_adc_avg > current_base){
+      current_adc_avg -= current_base; 
+    }
+    else {
+      current_adc_avg = 0;
+    }
+    
+    // mA (->RMS)
+    current_RMS_mA = current_lookup_interpolation(current_adc_avg);
+    
+    current_power = (uint32_t)voltage_RMS_V * current_RMS_mA;
     
     #if TUNE_MODE == 1
 //    tune_cnt++;
@@ -87,7 +103,8 @@ void Power_read(void)
 //      while(1);
 //    }
     
-    tune_record = voltage_avg;
+//    tune_record = ;
+//    tune_record = ;
     #endif
     
     pwr_read_cnt = 0;
@@ -117,6 +134,65 @@ void current_read(void)
   //current_IIR_new = (current_new * 2 + current_IIR_old * 98) / 100;
   current_sum += current_new;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+typedef struct {
+    uint16_t adc;     // ADC valuw without current_base
+    uint16_t current; // 對應電流值 (單位：mA)
+} LookupEntry;
+
+
+#define TABLE_SIZE 9
+// ADC_Code(base)
+const LookupEntry code lookupTable[TABLE_SIZE] = {
+    {0,    6},
+    {500,    1813},
+    {1000,   3620},
+    {1500,   5428},
+    {2000,   7235},
+    {2500,   9042},
+    {3000,   10849},
+    {3500,   12656},
+    {4000,   14464}
+};
+// To save computational resources on an 8-bit MCU, we use fixed-point arithmetic.
+// We choose SCALE_BITS = 8 (i.e., multiply by 256).
+// The fixed slope is 3.614397; its fixed-point representation is: 3.614397 * 256 ≈ 925.
+#define SCALE_BITS 8
+#define FIXED_SLOPE 925
+
+// current_lookup_interpolation uses the pre-calculated fixed slope for interpolation.
+// It takes an ADC value as input and returns the corresponding current value (in IRMS mA).
+uint16_t current_lookup_interpolation(uint16_t adc_val) 
+{
+  uint8_t i;
+  uint16_t adc_low, current_low, diff;
+  uint16_t interpolated_current;
+  
+  // If ADC value is below the minimum in the table, return the minimum current.
+  if (adc_val <= lookupTable[0].adc)
+      return lookupTable[0].current;
+  
+  // If ADC value is above the maximum in the table, return the maximum current.
+  if (adc_val >= lookupTable[TABLE_SIZE - 1].adc)
+      return lookupTable[TABLE_SIZE - 1].current;
+
+  // Find the interval in which adc_val falls
+  for (i = 0; i < TABLE_SIZE - 1; i++) {
+    if (adc_val < lookupTable[i+1].adc) {
+      adc_low = lookupTable[i].adc;
+      current_low  = lookupTable[i].current;
+      diff = adc_val - adc_low;
+      // interpolated_current = current_low  + (diff * FIXED_SLOPE) / 256
+      interpolated_current = current_low  + (((uint32_t)diff * FIXED_SLOPE) >> SCALE_BITS);
+      return interpolated_current;
+    }
+  }
+  
+  // Theoretically should not reach here.
+  return lookupTable[TABLE_SIZE - 1].current;
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void voltage_read(void)
@@ -174,11 +250,11 @@ void Quick_Change_Detect() {
   static uint16_t last_current = 0;     // 上次測量的電流值  
   
 //    // 檢查電壓是否超過上下限
-//    if (voltage_avg > VOLTAGE_UPPER_LIMIT) {
+//    if (voltage_RMS_V > VOLTAGE_UPPER_LIMIT) {
 //        error_flags.f.Voltage_overshoot = 1;  // 電壓超過上限
 //        system_state = PAUSE;         // 切換系統狀態為暫停
 //        stop_heating();               // 停止加熱操作
-//    } else if (voltage_avg < VOLTAGE_LOWER_LIMIT) {
+//    } else if (voltage_RMS_V < VOLTAGE_LOWER_LIMIT) {
 //        error_flags.f.Voltage_undershoot = 1;  // 電壓低於下限
 //        system_state = PAUSE;         // 切換系統狀態為暫停
 //        stop_heating();               // 停止加熱操作
@@ -198,15 +274,15 @@ void Quick_Change_Detect() {
 //    }
 
 //    // 檢查電流是否快速變化
-//    if (abs(current_avg - last_current) > CURRENT_CHANGE_THRESHOLD) {
+//    if (abs(current_RMS_mA - last_current) > CURRENT_CHANGE_THRESHOLD) {
 //        error_flags.f.Current_quick_large = 1;  // 電流快速變化
 //    } else {
 //        error_flags.f.Current_quick_large = 0;  // 清除快速變化標誌
 //    }
 
 //    // 更新上次的測量值
-//    last_voltage = voltage_avg;
-//    last_current = current_avg;
+//    last_voltage = voltage_RMS_V;
+//    last_current = current_RMS_mA;
 }
 
 
