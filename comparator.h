@@ -62,6 +62,23 @@
 #define CM1REF_VDD      (0<<7)
 #define CM1REF_INTREF   (1<<7)
 
+// CMDB1
+#define CM1_DEBOUNCE_0FCPU      (0<<0)
+#define CM1_DEBOUNCE_2FCPU      (1<<0)
+#define CM1_DEBOUNCE_4FCPU      (2<<0)
+#define CM1_DEBOUNCE_6FCPU      (3<<0)
+#define CM1_DEBOUNCE_8FCPU      (4<<0)
+#define CM1_DEBOUNCE_10FCPU     (5<<0)
+#define CM1_DEBOUNCE_12FCPU     (6<<0)
+#define CM1_DEBOUNCE_14FCPU     (7<<0)
+#define CM1_DEBOUNCE_16FCPU     (8<<0)
+#define CM1_DEBOUNCE_18FCPU     (9<<0)
+#define CM1_DEBOUNCE_20FCPU     (10<<0)
+#define CM1_DEBOUNCE_22FCPU     (11<<0)
+#define CM1_DEBOUNCE_24FCPU     (12<<0)
+#define CM1_DEBOUNCE_26FCPU     (13<<0)
+#define CM1_DEBOUNCE_28FCPU     (14<<0)
+#define CM1_DEBOUNCE_30FCPU     (15<<0)
 
 // CM2M
 #define mskCM2EN    (1<<7)
@@ -74,6 +91,34 @@
 // CM2REF
 #define CM2REF_VDD      (0<<7)
 #define CM2REF_INTREF   (1<<7)
+
+
+// CM3M
+#define mskCM3EN    (1<<7)
+
+#define CM3_RISING_TRIGGER    (1<<3)
+#define CM3_FALLING_TRIGGER   (0<<3)
+// CMDB3
+#define CM3_DEBOUNCE_0FCPU      (0<<0)
+#define CM3_DEBOUNCE_2FCPU      (1<<0)
+#define CM3_DEBOUNCE_4FCPU      (2<<0)
+#define CM3_DEBOUNCE_6FCPU      (3<<0)
+#define CM3_DEBOUNCE_8FCPU      (4<<0)
+#define CM3_DEBOUNCE_10FCPU     (5<<0)
+#define CM3_DEBOUNCE_12FCPU     (6<<0)
+#define CM3_DEBOUNCE_14FCPU     (7<<0)
+#define CM3_DEBOUNCE_16FCPU     (8<<0)
+#define CM3_DEBOUNCE_18FCPU     (9<<0)
+#define CM3_DEBOUNCE_20FCPU     (10<<0)
+#define CM3_DEBOUNCE_22FCPU     (11<<0)
+#define CM3_DEBOUNCE_24FCPU     (12<<0)
+#define CM3_DEBOUNCE_26FCPU     (13<<0)
+#define CM3_DEBOUNCE_28FCPU     (14<<0)
+#define CM3_DEBOUNCE_30FCPU     (15<<0)
+
+// CM3REF
+#define CM3REF_VDD      (0<<7)
+#define CM3REF_INTREF   (1<<7)
 
 // CMOUT
 #define mskCM4OUT     (1<<4)
@@ -103,7 +148,7 @@
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile bit f_CM1_AC_sync;
+extern volatile bit f_CM3_AC_sync;
 
 /*_____ M A C R O S ________________________________________________________*/
 #define CM0_IRQ_ENABLE  IEN2 |= mskECMP0

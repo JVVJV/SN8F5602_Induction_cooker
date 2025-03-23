@@ -35,35 +35,6 @@ typedef union {
     uint16_t all_flags; // 用於快速檢查所有標誌
 } ErrorFlags;
 
-
-//typedef union {
-//  struct {
-//      uint8_t f_IGBT_overheat : 1;
-//      uint8_t f_TOP_overheat : 1;
-//      uint8_t f_IGBT_sensor_fault : 1;
-//      uint8_t f_TOP_sensor_fault : 1;
-//      uint8_t f_over_voltage : 1;
-//      uint8_t f_low_voltage : 1;
-//      uint8_t f_voltage_quick_change : 1;
-//      uint8_t f_Current_quick_large : 1;
-//  } bits;
-//  uint8_t all_flags; // 用於快速檢查所有標誌
-//} ErrorFlags0;
-
-//typedef union {
-//  struct {
-//      uint8_t f_voltage_overshoot : 1;
-//      uint8_t f_voltage_undershoot : 1;
-//      //uint8_t f_IGBT_sensor_fault : 1;
-//      //uint8_t f_TOP_sensor_fault : 1;
-//      //uint8_t f_over_voltage : 1;
-//      //uint8_t f_low_voltage : 1;
-//      //uint8_t f_voltage_quick_change : 1;
-//      //uint8_t f_Current_quick_large : 1;
-//  } bits;
-//  uint8_t all_flags; // 用於快速檢查所有標誌
-//} ErrorFlags1;
-
 typedef enum {
   TASK_HEAT_CONTROL,            // 加熱控制任務  
   TASK_POWER_CONTROL,           // 功率控制任務
@@ -86,6 +57,20 @@ typedef enum {
     ERROR,
 } SystemState;
 
+
+typedef enum {
+    POT_IDLE,
+    POT_CHECKING,
+    POT_ANALYZING
+} PotDetectionState;
+
+typedef enum {
+    PWR_UP,
+    WAIT_STABILIZATION,
+    RECORDING
+} PotAnalyzeState;
+
+
 #define CNTDOWN_TIMER_POT_DETECT      0 // 鍋具檢測間隔計時器id
 #define CNTDOWN_TIMER_CURRENT_CHANGE  1 // 控制 3000ms 電流變化檢查倒數計時器 ID
 #define CNTDOWN_TIMER_POWER_CONTROL   2 // 控制 5ms POWER_CONTROL
@@ -95,13 +80,16 @@ typedef enum {
 extern volatile bit f_125us;
 extern volatile uint8_t system_ticks;
 extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
+
 extern ErrorFlags error_flags;
+extern volatile uint8_t Surge_Overvoltage_Flag; // By CM1
+
 extern SystemState system_state;
 extern uint32_t power_setting;
 extern uint32_t target_power;
 extern TaskType current_task; // 當前任務
-extern uint16_t voltage_IIR_new;         // 目前濾波後電壓
-extern uint16_t current_IIR_new;         // 目前濾波後電流
+//extern uint16_t voltage_IIR_new;         // 目前濾波後電壓
+//extern uint16_t current_IIR_new;         // 目前濾波後電流
 extern uint32_t current_power;           // 目前功率
 extern uint16_t current_RMS_mA;
 extern uint16_t voltage_RMS_V;
@@ -114,6 +102,8 @@ extern bit f_pot_detected;
 extern bit f_AC_50Hz; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**
 extern uint8_t measure_per_AC_cycle;
 
+extern PotDetectionState pot_detection_state;
+extern PotAnalyzeState pot_analyze_state;
 
 //DEBUG
 extern  uint16_t tune_cnt;

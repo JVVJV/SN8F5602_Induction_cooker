@@ -53,7 +53,7 @@ void Power_read(void)
   
   // 計數 Power_read 執行次數
   pwr_read_cnt++;
-  if (pwr_read_cnt >= measure_per_AC_cycle) 
+  if (pwr_read_cnt >= measure_per_AC_cycle)
   { // 每 50/60 Hz 重置
     //P10 = 1; //HCW**
     if(f_AC_50Hz){
@@ -289,15 +289,20 @@ void Quick_Change_Detect() {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void stop_heating(void)
 {
-    // 實現停止加熱邏輯
-    P01 = 1;
-    PW0M = 0;
-    CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
-    f_heating_initialized = 0;
+  // 實現停止加熱邏輯
+  P01 = 1;  //PWM Pin
+  PW0M = 0;
+  CM0M &= ~mskCM0SF;        // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
+  
+  f_pot_detected = 0;       // 重置鍋具檢測標誌
+  f_heating_initialized = 0;
+  //power_setting = 0;
 }
 
 void pause_heating(void)
 {
+  //P10 = ~P10 ;//HCW**
+  
   // 暫停加熱
   PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
   CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
@@ -337,7 +342,6 @@ void Heat_Control(void)
 
   // 如果功率設定為 0，直接切換至待機狀態
   if (power_setting == 0) {
-      f_pot_detected = 0; // 重置鍋具檢測標誌
       system_state = STANDBY; // 切換系統狀態為待機
       stop_heating(); // 停止加熱
       return;
@@ -366,65 +370,90 @@ void Heat_Control(void)
       case 200000: level = 2; break; // 3檔
       default: return; // 確保安全
     } 
-    if(system_state != PERIODIC_HEATING)  //HCW**
-    {
-      periodic_heat_state = PERIODIC_REST_PHASE;
-    }
     system_state = PERIODIC_HEATING; // 切換系統狀態為間歇加熱模式
   }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-volatile PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
-volatile uint8_t sync_count = 0;       
-volatile uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間**
+typedef enum {
+    PERIODIC_HEAT_PHASE,
+    PERIODIC_HEAT_END_PHASE,  // **確保最後一個加熱週期結束後，先等 `ac_half_low_ticks_avg`**
+    PERIODIC_REST_PHASE,
+    PERIODIC_SLOWDOWN_PHASE
+} PeriodicHeatState;
+
 
 void Periodic_Power_Control(void) {
-    if (system_state != PERIODIC_HEATING) {
-        return;
+  static PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
+  static uint8_t sync_count = 0;       
+  static uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間*
+  static bit f_first_entry = 1;  // **標記是否為第一次進入 PERIODIC_HEATING**
+  uint8_t elapsed_ticks;
+  
+  // **確保只有在 PERIODIC_HEATING 狀態下執行**
+  if (system_state != PERIODIC_HEATING) {
+      f_first_entry = 1;  // **當離開 PERIODIC_HEATING 時，重置標誌**
+      return;
+  }
+  
+  // **初始化狀態，僅在進入 PERIODIC_HEATING 的第一個周期執行**
+  if (f_first_entry) {
+    sync_count = 0;
+    
+    // **判斷是否已經初始化過加熱**
+    if (f_heating_initialized) {
+        periodic_heat_state = PERIODIC_HEAT_PHASE;
+    } else {
+        periodic_heat_state = PERIODIC_REST_PHASE;
     }
+    
+    f_first_entry = 0;  // **清除首次進入標誌**
+  }  
+  
+  // **檢查是否有新的 AC 訊號週期**
+  if (f_CM3_AC_sync) {
+      f_CM3_AC_sync = 0;
+      sync_count++;
+  }
+  
+  // **計算經過時間**
+  elapsed_ticks = system_ticks - phase_start_tick;
 
-    // **檢查是否有新的 AC 訊號週期**
-    if (f_CM1_AC_sync) {
-        f_CM1_AC_sync = 0;
-        sync_count++;
-    }
+  switch (periodic_heat_state) {
+    case PERIODIC_REST_PHASE:
+      if (sync_count >= Periodic_table[level].rest_cycle) {
+        sync_count = 0;
+        IGBT_C_slowdown();
+        phase_start_tick = system_ticks;
+        periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
+      }
+      break;
 
-    switch (periodic_heat_state) {
-        case PERIODIC_REST_PHASE:
-            if (sync_count >= Periodic_table[level].rest_cycle) {
-              sync_count = 0;
-              IGBT_C_slowdown();
-              phase_start_tick = system_ticks;
-              periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
-            }
-            break;
+    case PERIODIC_SLOWDOWN_PHASE:
+      // **等待 `ac_half_low_ticks_avg` 週期時間，再進入加熱**
+      if (elapsed_ticks >= ac_half_low_ticks_avg) {
+        pause_heating();    // Stop IGBT_C_slowdown PWM
+        init_heating(PERIODIC);
+        periodic_heat_state = PERIODIC_HEAT_PHASE;
+      }
+      break;
 
-        case PERIODIC_SLOWDOWN_PHASE:
-            // **等待 `ac_half_low_ticks_avg` 週期時間，再進入加熱**
-            if ((uint8_t)(system_ticks - phase_start_tick) >= ac_half_low_ticks_avg) {
-              pause_heating();    // Stop IGBT_C_slowdown PWM
-              init_heating(PERIODIC);
-              periodic_heat_state = PERIODIC_HEAT_PHASE;
-            }
-            break;
+    case PERIODIC_HEAT_PHASE:
+      if (sync_count >= Periodic_table[level].heat_cycle) {
+        sync_count = 0;
+        phase_start_tick = system_ticks;
+        periodic_heat_state = PERIODIC_HEAT_END_PHASE;
+      }
+      break;
 
-        case PERIODIC_HEAT_PHASE:
-            if (sync_count >= Periodic_table[level].heat_cycle) {
-              sync_count = 0;
-              phase_start_tick = system_ticks;
-              periodic_heat_state = PERIODIC_HEAT_END_PHASE;
-            }
-            break;
-
-        case PERIODIC_HEAT_END_PHASE:
-            // **等待 `ac_half_low_ticks_avg`，才真正停止加熱**
-            if ((uint8_t)(system_ticks - phase_start_tick) >= ac_half_low_ticks_avg) {
-              pause_heating();
-              periodic_heat_state = PERIODIC_REST_PHASE;
-            }
-            break;
-    }
+    case PERIODIC_HEAT_END_PHASE:
+      // **等待 `ac_half_low_ticks_avg`，才真正停止加熱**
+      if (elapsed_ticks >= ac_half_low_ticks_avg) {
+        pause_heating();
+        periodic_heat_state = PERIODIC_REST_PHASE;
+      }
+      break;
+  }
 }
 
 
@@ -463,8 +492,8 @@ void init_heating(HeatingMode heating_mode)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define SLOWDOWN_PWM_WIDTH  28    // **875ns / 31.25ns = 28 clks**
-#define SLOWDOWN_PWM_PERIOD 880   // **27.5us / 31.25ns = 880 clks**
+#define SLOWDOWN_PWM_WIDTH  24    // 750ns / 31.25ns = 24 clks
+#define SLOWDOWN_PWM_PERIOD 600   // 18.75us / 31.25ns = 600 clks
 
 void IGBT_C_slowdown(void) {
     PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**

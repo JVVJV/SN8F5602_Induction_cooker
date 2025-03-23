@@ -44,7 +44,7 @@ uint8_t measure_per_AC_cycle = MEASUREMENTS_PER_60HZ;
 
 ErrorFlags error_flags;
 
-SystemState system_state = STANDBY;  // 系統初始狀態為待機
+SystemState system_state = STANDBY;  // 系統初始狀態為待機, should not switch state in ISR, it may switch back in main loop. 
   
   #if TUNE_MODE == 1
 //  uint16_t tune_cnt = 0;
@@ -150,7 +150,7 @@ void Update_System_Time() {
     // 利用 system_ticks 減去已記錄值來計算 1 ms
     if ((system_ticks - last_1ms_ticks) >= SYSTEM_TICKS_PER_1MS) {
         system_time_1ms++;                   // 增加 1ms 計數
-        last_1ms_ticks += SYSTEM_TICKS_PER_1MS; // 更新已記錄的 ticks
+        last_1ms_ticks = system_ticks; // 更新已記錄的 ticks
 
         // 更新所有倒數計時器
         cntdown_timer_update(); 
@@ -159,10 +159,9 @@ void Update_System_Time() {
     // 利用 system_time_1ms 減去已記錄值來計算 1 秒
     if ((system_time_1ms - last_1s_time_1ms) >= SYSTEM_1MS_PER_SECOND) {
         system_time_1s++;                     // 增加 1 秒計數
-        last_1s_time_1ms += SYSTEM_1MS_PER_SECOND; // 更新已記錄的 1ms 時間
+        last_1s_time_1ms = system_time_1ms; // 更新已記錄的 1ms 時間
     }
 }
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define VOLTAGE_THRESHOLD 220          // 電壓門檻值 (220V)
@@ -321,10 +320,9 @@ void Power_Control(void)
 #define POT_PULSE_THRESHOLD   30  // 鍋具不存在的脈衝數門檻
 
 volatile uint8_t pot_pulse_cnt = 0;   // 鍋具脈衝計數器
+PotDetectionState pot_detection_state = POT_IDLE;
 
 void Pot_Detection() {
-  static enum {POT_IDLE, POT_CHECKING, POT_ANALYZING} pot_detection_state = POT_IDLE;
-  
   switch (pot_detection_state) {
     case POT_IDLE:
       if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
@@ -355,7 +353,7 @@ void Pot_Detection() {
         return;
       }
       // 鍋具確認完成，結束檢鍋邏輯
-      //CM0_IRQ_DISABLE;    //HCW** should not comment
+      CM0_IRQ_DISABLE;
       // 重啟檢鍋間隔計時器
       cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POT_CHECK_INTERVAL);
         
@@ -422,19 +420,15 @@ void Pot_Detection_In_Heating(void)
 #define POWER_STABLE_TIME       1000   // 1000ms
 #define POWER_SAMPLE_INTERVAL   100    // 100ms  
 
+PotAnalyzeState pot_analyze_state = PWR_UP;
+
 void Pot_Analyze(void) {
     static uint8_t xdata record_count = 0;
     static uint16_t xdata PW0D_val[4];  // 記錄 4 次 PWM 寬度
-    static enum {PWR_UP, WAIT_STABILIZATION, RECORDING} xdata state = PWR_UP;
     uint16_t sum;
     uint8_t i;
     
-//    // **如果已完成分析，則不再執行**
-//    if (f_pot_analyzed == 1) {
-//        return;
-//    }
-    
-    switch (state) {
+    switch (pot_analyze_state) {
       case PWR_UP:
         // **第一步：開始加熱並進入穩定等待狀態**
         target_power = POT_ANALYZE_POWER;
@@ -443,7 +437,7 @@ void Pot_Analyze(void) {
 
         // **啟動 1 秒倒數計時**
         cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_STABLE_TIME);
-        state = WAIT_STABILIZATION;
+        pot_analyze_state = WAIT_STABILIZATION;
         break;
 
       case WAIT_STABILIZATION:        
@@ -454,7 +448,7 @@ void Pot_Analyze(void) {
 
         // **1 秒結束後，開始記錄**
         cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL); // 啟動 100ms 記錄計時
-        state = RECORDING;
+        pot_analyze_state = RECORDING;
         break;
 
       case RECORDING:
@@ -476,6 +470,10 @@ void Pot_Analyze(void) {
         
         // **當 4 次記錄完成後，計算平均**
         if (record_count >= 4) {
+          // Align with the AC zero-crossing to prevent surge protection 
+          // from triggering due to rapid voltage rebound after pause_heating.
+          f_CM3_AC_sync = 0;
+          while(f_CM3_AC_sync == 0);
           // 停止加熱
           pause_heating();
           
@@ -492,7 +490,7 @@ void Pot_Analyze(void) {
           f_pot_detected = 1;
           f_pot_analyzed = 1;
           // **重置狀態，以便下次測量**
-          state = PWR_UP;
+          pot_analyze_state = PWR_UP;
         }
         break;
     }
@@ -516,29 +514,28 @@ void Measure_AC_Low_Time(void) {
 //  uint8_t low_count;
 
 //    // **等待中斷發生**           // It’s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM1_ISR, 
-//    while (f_CM1_AC_sync == 0);   // we can ensure the f_CM1_AC_sync is only set on the AC’s rising edge.
+//    while (f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC’s rising edge.
   
     // 等待 AC 訊號穩定，收集 4 次數據
     for (i = 0; i < AC_PERIOD_COUNT; i++) {
       
-//      // 軟體 debounce：確保 CM1 真的回到 LOW，才清除f_CM1_AC_sync
+//      // 軟體 debounce：確保 CM3 真的回到 LOW，f_CM3_AC_sync
 //      low_count = 0;
 //      while (low_count < PRE_CLEAR_DEBOUNCE_COUNT) {
 //        debounce_start = system_ticks;
 //        while ((system_ticks - debounce_start) < PRE_CLEAR_DEBOUNCE_INTERVAL); // 等待 `250us`
 //        
-//        if ((CMOUT & mskCM1OUT) == 0) {
+//        if ((CMOUT & mskCM3OUT) == 0) {
 //            low_count++;
 //        } else {
 //            low_count = 0;  // 若 `CM1` 變 LOW，則重新計算
 //        }
 //      }
       
-      f_CM1_AC_sync = 0;  // **清除中斷標誌**
+      f_CM3_AC_sync = 0;  // **清除中斷標誌**
 
       // **等待中斷發生**
-      while (f_CM1_AC_sync == 0);
-      
+      while (f_CM3_AC_sync == 0);
       
       // **開始計時**
       start_ticks = system_ticks;
@@ -546,8 +543,8 @@ void Measure_AC_Low_Time(void) {
       // 軟體 debounce：等待至少 `DEBOUNCE_TICKS` 再開始偵測**
       while ((system_ticks - start_ticks) < DEBOUNCE_TICKS);
       
-      // **等待 CM1 輸出轉為 LOW**
-      while (CMOUT & mskCM1OUT);
+      // **等待 CM3 輸出轉為 LOW**
+      while (CMOUT & mskCM3OUT);
       
       // **記錄時間**
       ac_low_periods[i]  = system_ticks - start_ticks;
@@ -577,19 +574,19 @@ void Detect_AC_Frequency(void) {
     uint16_t sum = 0;
     uint8_t start_tick, elapsed_ticks;
 
-    f_CM1_AC_sync = 0;
+    f_CM3_AC_sync = 0;
   
     for (i = 0; i < AC_FREQUENCY_SAMPLES; i++) {
-        // **等待 f_CM1_AC_sync 立起**
-        while (!f_CM1_AC_sync);
-        f_CM1_AC_sync = 0;  // **清除標誌**
+        // **等待 f_CM3_AC_sync 立起**
+        while (!f_CM3_AC_sync);
+        f_CM3_AC_sync = 0;  // **清除標誌**
         
         // **記錄開始時間**
         start_tick = system_ticks;
 
-        // **等待下一次 f_CM1_AC_sync 立起**
-        while (!f_CM1_AC_sync);
-        f_CM1_AC_sync = 0;  // **清除標誌**
+        // **等待下一次 f_CM3_AC_sync 立起**
+        while (!f_CM3_AC_sync);
+        f_CM3_AC_sync = 0;  // **清除標誌**
         
         // **計算經過的 ticks**
         elapsed_ticks = system_ticks - start_tick;
@@ -610,20 +607,52 @@ void Detect_AC_Frequency(void) {
 }
 
 
-
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-ErrorFlags error_flags;
+#define ERROR_RECOVERY_TIME_S  2  // Time required for error recovery (seconds)
+
+ErrorFlags error_flags = {0};
+volatile uint8_t Surge_Overvoltage_Flag = 0;
 
 void Error_Process(void)
 {
-  if (system_state == ERROR) {
-      // 檢查是否需要重置系統狀態
-      if (error_flags.all_flags == 0) {
-          system_state = STANDBY; // 所有錯誤標誌清除，切換為 STANDBY
+  static uint8_t error_clear_time_1s  = 0; // Record the last time all errors were cleared
+    
+  // If system is not in ERROR state, check if it needs to enter ERROR
+  if (system_state != ERROR) {
+    if (Surge_Overvoltage_Flag || error_flags.all_flags) {
+      system_state = ERROR;
+      
+      error_clear_time_1s = system_time_1s;  // Record the current time
+      
+      // Stop_heating again
+      stop_heating();
+      
+      // pot_detection & pot_analyze ini
+      pot_detection_state = POT_IDLE;
+      pot_analyze_state = PWR_UP;
+    }
+    return;
+  }
+
+  // Check if Surge Overvoltage has recovered
+  if (Surge_Overvoltage_Flag) {
+      if (CMOUT & mskCM1OUT) {  // If CM1OUT returns to 1, voltage is back to normal
+          Surge_Overvoltage_Flag = 0;
       }
   }
 
-  // 若必要，可添加其他錯誤處理邏輯
+  // If any error flags are still active, update the error_clear_time_1s and return
+  if (Surge_Overvoltage_Flag || error_flags.all_flags) {
+      error_clear_time_1s = system_time_1s;  // Record the current time
+      return;
+  }
+
+  // All errors cleared, check if ERROR_RECOVERY_TIME_S seconds have passed
+  if ((uint8_t)(system_time_1s - error_clear_time_1s) >= ERROR_RECOVERY_TIME_S) {
+      system_state = STANDBY; // Maintain ERROR_RECOVERY_TIME_S seconds without errors before returning to STANDBY
+  }
+  
 }
+
+
 

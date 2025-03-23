@@ -12,6 +12,7 @@
 #include "comparator.h"
 #include "config.h"
 #include "system.h"
+#include "power.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -32,7 +33,6 @@ void Comparator_Init(void)
   
   CM0M = CM0_FALLING_TRIGGER | CM0_CLK_FCPU;
   CMDB0 = DELAY_4T | DEBOUNCE_10FCPU;
-  //CMDB0 = DELAY_0T | DEBOUNCE_0FCPU;   //HCW** for experiment
   
   CM0M |= mskCM0EN;
   
@@ -42,17 +42,26 @@ void Comparator_Init(void)
   INTREF = mskINTREFEN | INTREF3V5;
   
   // CM1 -------------------------------------------------------
-  // AC Power Sync.
+  // AC Power surge protection @260 Vrms
+  // Protection voltage is 260V RMS (peak 367V), 
+  // with a resistor divider ratio of 0.0049, resulting in 1.8V.
+  
+  // After the induction cooker begins operation, the GND potential shifts upward & down, so we need an increase in the voltage surge detection threshold.
+  // For this prototype circuit, an upward adjustment of 225mV is required
   CM1M = 0;
+  
   // CM1N
   // P04 switch to analog pin
-  P0CON |= (1<<4);  
-  // CM1P
-  // 設定 CM1+ 端為內部參考電壓 0.5V
-  // INTERNAL 3.5V*9/64 = 0.5V (0.49V) -> CM1RS = 9 
-  CM1REF = CM1REF_INTREF | 9;
+  P0CON |= (1<<4); 
   
-  CM1M = mskCM1EN | CM1_RISING_TRIGGER;
+  // CM1P
+  // 設定 CM1+ 端為內部參考電壓 1.8V + 0.225V = 2.025V
+  // INTERNAL 3.5V*37/64 = 2.023V-> CM1RS = 37
+  CM1REF = CM1REF_INTREF | 37;
+  
+  CMDB1 = CM1_DEBOUNCE_8FCPU; // 0.5us
+  
+  CM1M = mskCM1EN | mskCM1SF |CM1_FALLING_TRIGGER;
   
   IEN2 |= mskECMP1;
   
@@ -62,6 +71,7 @@ void Comparator_Init(void)
   // CM2N
   // P05 switch to analog pin
   P0CON |= (1<<5);  
+  
   // CM2P
   // 1100V*2.5K/827.5K = 3.32V
   // INTERNAL 3.5V*60/64 = 3.28V -> CM2RS = 60 
@@ -72,6 +82,27 @@ void Comparator_Init(void)
   CM2M = mskCM2EN | mskCM2SF |CM2_FALLING_TRIGGER;
   
   IEN2 |= mskECMP2;
+  
+  // CM3 -------------------------------------------------------
+  // AC Power Sync.
+  CM3M = 0;
+  
+  // CM3P
+  // P04 switch to analog pin
+  // P0CON |= (1<<4);    // It has already been executed during CM2 initialization.
+  
+  // CM3N
+  // Set CM3- to internal reference voltage 0.5V
+  // INTERNAL 3.5V*9/64 = 0.5V (0.49V) -> CM3RS = 9 
+  CM3REF = CM3REF_INTREF | 9;
+  
+  //CM3REF = CM3REF_INTREF | 1; // 54mV
+  
+  CMDB3 = CM3_DEBOUNCE_20FCPU;
+  
+  CM3M = mskCM3EN | CM3_FALLING_TRIGGER;
+  
+  IEN2 |= mskECMP3;
   
 }
 
@@ -89,27 +120,15 @@ void comparator0_ISR(void) interrupt ISRCmp0
     // 其他 Comparator0 的邏輯可在此處添加
 }
 
-
-#define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
-/*
-   AC_SYNC_DEBOUNCE_TICKS 用於確保 `f_CM1_AC_sync` 只會在新的 AC 週期開始時觸發：
-   1. 當 `CM1-` 低於 `CM1+` (0.5V) 時，`CM1_ISR` 會觸發，但可能會有訊號抖動。
-   2. 此變數設定 `4ms (32 system_ticks)` 作為 debounce 時間。
-   3. `f_CM1_AC_sync` 只在 `AC_SYNC_DEBOUNCE_TICKS` 之後才允許再次觸發，防止抖動影響計時準確性。
-*/
-
-volatile bit f_CM1_AC_sync = 0;
-volatile uint8_t last_sync_tick = 0; // 記錄上次 `f_CM1_AC_sync` 設為 `1` 的時間
-
 void comparator1_ISR(void) interrupt ISRCmp1
-{
-  // **確保 `f_CM1_AC_sync` 只會在新的 AC 週期內觸發**
-  if ((uint8_t)(system_ticks - last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
-    f_CM1_AC_sync = 1;       // **標記新 AC 週期開始**
-    last_sync_tick = system_ticks; // **更新 `last_sync_tick`**
-  }
+{  
+  // 當 CM1 觸發中斷，代表電壓浪湧發生，立起 Surge_Overvoltage_Flag
+  Surge_Overvoltage_Flag  = 1;
+  
+  // 中斷內 初步停止加熱邏輯
+  P01 = 1;  //PWM Pin
+  PW0M = 0;
 }
-
 
 void comparator2_ISR(void) interrupt ISRCmp2
 {
@@ -123,4 +142,24 @@ void comparator2_ISR(void) interrupt ISRCmp2
   }
   
   //P10 = 0; //HCW**
+}
+
+#define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
+/*
+   AC_SYNC_DEBOUNCE_TICKS is used to ensure that `f_CM3_AC_sync` is only triggered at the start of a new AC cycle:
+   1. When `CM3+` is lower than `CM3-` (0.5V), `CM3_ISR` will be triggered, but there may be signal jitter.
+   2. This variable sets `4ms (32 system_ticks)` as the debounce time.
+   3. `f_CM3_AC_sync` is only allowed to be triggered again after `AC_SYNC_DEBOUNCE_TICKS`, preventing jitter from affecting the timing accuracy.
+*/
+
+volatile bit f_CM3_AC_sync = 0;
+volatile uint8_t CM3_last_sync_tick = 0; // Record the time when `f_CM3_AC_sync` was set to `1`
+
+void comparator3_ISR(void) interrupt ISRCmp3
+{
+  // **Ensure that `f_CM3_AC_sync` is only triggered within a new AC cycle**
+  if ((uint8_t)(system_ticks - CM3_last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
+    f_CM3_AC_sync = 1;       // **Mark the start of a new AC cycle**
+    CM3_last_sync_tick = system_ticks; // **Update `last_sync_tick`**
+  }
 }

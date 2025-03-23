@@ -85,8 +85,8 @@ void main (void)
 //  power_setting = 800000;
   #endif
   
-  // system_ticks reset to zero
-  system_ticks = 0;
+  // f_125us reset to zero
+  f_125us = 0;
   
   // 進入主程式循環
   while (1) {
@@ -140,7 +140,7 @@ void main (void)
             break;
 
         case TASK_ERROR_PROCESS:
-            //Error_Process();  // 處理錯誤任務
+            Error_Process();  // 處理錯誤任務
             current_task = TASK_HEAT_CONTROL;  // 循環回到第一個任務
             break;
 
