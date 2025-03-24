@@ -12,6 +12,8 @@ typedef enum {
     PERIODIC
 } HeatingMode;
 
+#define HEATING_SYNC_AC   1  // Wait for AC low before starting
+#define HEATING_IMMEDIATE 0  // Start immediately without AC synchronization
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern bit f_En_check_current_change;
@@ -23,7 +25,7 @@ extern uint8_t level;
 /*_____ F U N C T I O N S __________________________________________________*/
 void Measure_Base_Current(void);
 void Power_read(void);
-void init_heating(HeatingMode heating_mode);
+void init_heating(HeatingMode heating_mode, uint8_t sync_ac_low);
 void stop_heating(void);
 
 #endif  // __POWER_H__

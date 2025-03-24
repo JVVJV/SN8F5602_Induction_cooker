@@ -153,13 +153,15 @@ void comparator2_ISR(void) interrupt ISRCmp2
 */
 
 volatile bit f_CM3_AC_sync = 0;
-volatile uint8_t CM3_last_sync_tick = 0; // Record the time when `f_CM3_AC_sync` was set to `1`
+volatile uint8_t idata CM3_AC_sync_cnt = 0;
+volatile uint8_t idata CM3_last_sync_tick = 0; // Record the time when `f_CM3_AC_sync` was set to `1`
 
 void comparator3_ISR(void) interrupt ISRCmp3
 {
   // **Ensure that `f_CM3_AC_sync` is only triggered within a new AC cycle**
   if ((uint8_t)(system_ticks - CM3_last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
     f_CM3_AC_sync = 1;       // **Mark the start of a new AC cycle**
+    CM3_AC_sync_cnt++;
     CM3_last_sync_tick = system_ticks; // **Update `last_sync_tick`**
   }
 }

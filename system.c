@@ -245,7 +245,7 @@ void Power_Control(void)
     
     // 初始化加熱功能
     if (!f_heating_initialized) {
-        init_heating(NORMAL);
+        init_heating(NORMAL, HEATING_SYNC_AC);
     }
 
     // 檢查是否可以啟用電流變化檢查
@@ -319,19 +319,25 @@ void Power_Control(void)
 #define POT_CHECK_INTERVAL    300 // 鍋具檢測間隔倒數計時值 (300ms)
 #define POT_PULSE_THRESHOLD   30  // 鍋具不存在的脈衝數門檻
 
-volatile uint8_t pot_pulse_cnt = 0;   // 鍋具脈衝計數器
 PotDetectionState pot_detection_state = POT_IDLE;
+volatile uint8_t pot_pulse_cnt = 0;   // 鍋具脈衝計數器
 
-void Pot_Detection() {
+void Pot_Detection() {  
+  
+  if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
+    return;  // 檢鍋間隔時間未到，直接返回
+  }
+  
+  f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
+  while (!f_CM3_AC_sync); // Block execution until AC low is detected
+  
+  
   switch (pot_detection_state) {
     case POT_IDLE:
-      if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
-        return;  // 檢鍋間隔時間未到，直接返回
-      }
-      
       // **開始檢鍋**
       // 啟動鍋具確認倒數計時器
       cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POT_CONFIRM_INTERVAL);
+      
       pot_pulse_cnt = 0;  // 清零脈衝計數器
       pot_detection_state = POT_CHECKING;
       
@@ -344,8 +350,7 @@ void Pot_Detection() {
       PW0M1 |= (mskPGOUT);             // 觸發檢鍋脈衝
       CLEAR_CM0_IRQ_FLAG;
       CM0_IRQ_ENABLE;
-      
-      return; // 初始化後立即返回
+      break;
       
     case POT_CHECKING:
       // **等待檢鍋完成**

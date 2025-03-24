@@ -149,6 +149,7 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit f_CM3_AC_sync;
+extern volatile uint8_t idata CM3_AC_sync_cnt;
 
 /*_____ M A C R O S ________________________________________________________*/
 #define CM0_IRQ_ENABLE  IEN2 |= mskECMP0

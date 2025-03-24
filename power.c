@@ -433,7 +433,7 @@ void Periodic_Power_Control(void) {
       // **等待 `ac_half_low_ticks_avg` 週期時間，再進入加熱**
       if (elapsed_ticks >= ac_half_low_ticks_avg) {
         pause_heating();    // Stop IGBT_C_slowdown PWM
-        init_heating(PERIODIC);
+        init_heating(PERIODIC, HEATING_IMMEDIATE);
         periodic_heat_state = PERIODIC_HEAT_PHASE;
       }
       break;
@@ -461,23 +461,25 @@ void Periodic_Power_Control(void) {
 #define CURRENT_CHANGE_CHECK_DELAY 2000 // 電流變化檢查延遲時間 (2000ms， 1ms 為基準)
 
 // 初始化加熱功能
-void init_heating(HeatingMode heating_mode)
+void init_heating(HeatingMode heating_mode, uint8_t sync_ac_low)
 { 
-  #if TUNE_MODE == 1
-  //PW0D = PWM_MAX_WIDTH;
-  #endif
+  // Wait for AC low if required
+  if (sync_ac_low) {
+    f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
+    while (!f_CM3_AC_sync); // Block execution until AC low is detected
+  }
   
-  // **設定 PWM 寬度**
+  // Set PWM duty cycle
   if (heating_mode == NORMAL) {
-    PW0D = PWM_MIN_WIDTH;  // **一般模式：最小 PWM**
+    PW0D = PWM_MIN_WIDTH;  // NORMAL mode 
   } else { 
-    PW0D = recorded_1000W_PW0D;  // **間歇模式：使用 `1000W` 參考值**
+    PW0D = recorded_1000W_PW0D;  //  PERIODIC mode reference value set to 1000W
   }
   
   // Enable PWM
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;
   
-  //FW啟動PWM第一次charge
+  // FW starts PWM for the first charge
   PW0M1 |= mskPGOUT;
   while((PW0M1&mskPGOUT) != 0); // Wait pulse end
   
@@ -485,10 +487,11 @@ void init_heating(HeatingMode heating_mode)
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
   PW0M |= mskPW0EN;             // Enable PWM
   
-  cntdown_timer_start(CNTDOWN_TIMER_CURRENT_CHANGE, CURRENT_CHANGE_CHECK_DELAY); // 啟動2000ms倒數計時
+  // Start a 2000ms countdown
+  cntdown_timer_start(CNTDOWN_TIMER_CURRENT_CHANGE, CURRENT_CHANGE_CHECK_DELAY); 
   
-  f_En_check_current_change = 0;   // 暫停檢查電流變化
-  f_heating_initialized = 1;       // 設置初始化標誌
+  f_En_check_current_change = 0;   // Disable current change detection temporarily
+  f_heating_initialized = 1;       // Mark heating as initialized
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
