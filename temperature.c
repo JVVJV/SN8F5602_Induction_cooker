@@ -119,20 +119,15 @@ void Temp_Measure(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義 IGBT 溫度上下限
-#define IGBT_TEMP_UPPER_LIMIT 100   // IGBT 溫度上限 (單位：適當的測量單位，例如攝氏度)
-#define IGBT_TEMP_LOWER_LIMIT -40   // IGBT 溫度下限 (單位：適當的測量單位，例如攝氏度)
-
-// 全域變數
-volatile uint8_t f_IGBT_overheat = 0;         // IGBT 過熱標誌位
-volatile uint8_t f_IGBT_sensor_fault = 0;     // IGBT 感溫裝置故障標誌位
+#define IGBT_TEMP_UPPER_LIMIT  35   // IGBT 溫度上限 (攝氏度)60
+#define IGBT_TEMP_LOWER_LIMIT -20   // IGBT 溫度下限 (攝氏度)
+#define IGBT_TEMP_RECOVERY     30   // IGBT Overheat release temperature 40
 
 // 定義 TOP 溫度上下限
-#define TOP_TEMP_UPPER_LIMIT 180   // TOP 溫度上限 (單位：適當的測量單位，例如攝氏度)
-#define TOP_TEMP_LOWER_LIMIT -40   // TOP 溫度下限 (單位：適當的測量單位，例如攝氏度)
+#define TOP_TEMP_UPPER_LIMIT  180   // TOP 溫度上限 (單位：適當的測量單位，例如攝氏度)
+#define TOP_TEMP_LOWER_LIMIT  -20   // TOP 溫度下限 (單位：適當的測量單位，例如攝氏度)
+#define TOP_TEMP_RECOVERY     100   // TOP Overheat release temperature
 
-// 全域變數
-volatile uint8_t f_TOP_overheat = 0;         // 表面過熱標誌位
-volatile uint8_t f_TOP_sensor_fault = 0;     // 表面感溫裝置故障標誌位
 
 void Temp_Process(void)
 {
@@ -144,7 +139,6 @@ void Temp_Process(void)
     
     //IGBT_TEMP_code += TMP_CAL_Offset;
   
-    
     // IGBT temperature process
     /* Estimate the interpolating point before and after the ADC value. */
     p1 = IGBT_NTC_table[ (IGBT_TEMP_code >> 5)  ];
@@ -155,14 +149,15 @@ void Temp_Process(void)
     
     // 檢查溫度是否異常 IGBT_Temp_Process
     if (IGBT_TEMP_C > IGBT_TEMP_UPPER_LIMIT) {
-        f_IGBT_overheat = 1;                  // 設置過熱標誌
-        system_state = SHUTTING_DOWN;         // 切換系統狀態為關機
-    } else if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
-        f_IGBT_sensor_fault = 1;              // 設置感溫裝置故障標誌
-        system_state = SHUTTING_DOWN;         // 切換系統狀態為關機
+      error_flags.f.IGBT_overheat = 1;
+    } else if (IGBT_TEMP_C < IGBT_TEMP_RECOVERY) {
+      error_flags.f.IGBT_overheat = 0;
+    }
+
+    if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
+      error_flags.f.IGBT_sensor_fault = 1;
     } else {
-        f_IGBT_overheat = 0;                  // 清除過熱標誌
-        f_IGBT_sensor_fault = 0;              // 清除故障標誌
+      error_flags.f.IGBT_sensor_fault = 0;
     }
     
     // TOP temperature process
@@ -175,17 +170,16 @@ void Temp_Process(void)
     
     // 檢查溫度是否異常 TOP_Temp_Process
     if (TOP_TEMP_C > TOP_TEMP_UPPER_LIMIT) {
-        f_TOP_overheat = 1;                  // 設置過熱標誌
-        system_state = SHUTTING_DOWN;           // 切換系統狀態為關機
-    } else if (TOP_TEMP_C < TOP_TEMP_LOWER_LIMIT) {
-        f_TOP_sensor_fault = 1;             // 設置感溫裝置故障標誌
-        system_state = SHUTTING_DOWN;           // 切換系統狀態為關機
+      error_flags.f.TOP_overheat = 1;
+    } else if (TOP_TEMP_C < TOP_TEMP_RECOVERY) {
+      error_flags.f.TOP_overheat = 0;
+    }
+
+    if (TOP_TEMP_C < TOP_TEMP_LOWER_LIMIT) {
+      error_flags.f.TOP_sensor_fault = 1;
     } else {
-        f_TOP_overheat = 0;                 // 清除過熱標誌
-        f_TOP_sensor_fault = 0;             // 清除故障標誌
+      error_flags.f.TOP_sensor_fault = 0;
     }
   }
 }
-
-
 

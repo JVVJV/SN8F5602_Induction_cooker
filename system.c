@@ -47,8 +47,9 @@ ErrorFlags error_flags;
 SystemState system_state = STANDBY;  // 系統初始狀態為待機, should not switch state in ISR, it may switch back in main loop. 
   
   #if TUNE_MODE == 1
-//  uint16_t tune_cnt = 0;
-//  uint32_t tune_record = 0;
+//  uint16_t xdata tune_cnt = 0;
+  uint32_t xdata tune_record1 = 0;
+  uint32_t xdata tune_record2 = 0;
   #endif
 
 /*_____ M A C R O S ________________________________________________________*/
@@ -171,11 +172,7 @@ void Update_System_Time() {
 
 uint32_t current_power = 0;           // 目前功率 mW
 uint16_t target_current = 0;          // 目標電流 mA
-//uint16_t voltage_IIR_new = 0;         // 目前濾波後電壓
-//uint16_t current_IIR_new = 0;         // 目前濾波後電流
 
-uint32_t current_sum = 0;
-uint32_t voltage_sum = 0;
 uint16_t current_RMS_mA = 0;
 uint16_t voltage_RMS_V = 0;
 
@@ -228,24 +225,19 @@ void Decrease_PWM_Width(uint8_t val) {
 // 功率控制函式
 void Power_Control(void)
 {
-    uint8_t pwm_adjust_value;
-  
     // 檢查 5ms 倒數計時器是否已到
     if (!cntdown_timer_expired(CNTDOWN_TIMER_POWER_CONTROL)) {
         return; // 若未到 5ms，直接返回
     }
-
     // 重啟倒數計時器
     cntdown_timer_start(CNTDOWN_TIMER_POWER_CONTROL, 5);
   
-    // 僅在系統狀態為 HEATING 時執行
-    if (system_state != HEATING) {
-        return;
-    }
-    
-    // 初始化加熱功能
+    // If heating is not initialized, handle according to system_state
     if (!f_heating_initialized) {
-        init_heating(NORMAL, HEATING_SYNC_AC);
+        if (system_state == HEATING) {
+            init_heating(HEATING_SYNC_AC, PULSE_WIDTH_MIN);
+        }
+        return;  // Exit if heating is not initialized (PERIODIC_HEATING case)
     }
 
     // 檢查是否可以啟用電流變化檢查
@@ -294,15 +286,11 @@ void Power_Control(void)
       PW0M |= mskPW0EN;
     }
     
-
-    // 比較目標電流與目前電流
+    // Compare target current with actual measured current
     if (target_current > current_RMS_mA) {
-      // 增加 PWM 寬度  
       Increase_PWM_Width(1); 
     } else {
-      // 減少 PWM 寬度
-      pwm_adjust_value = error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1; 
-      Decrease_PWM_Width(pwm_adjust_value);
+      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
     }
     
     #if TUNE_MODE == 1
@@ -341,8 +329,9 @@ void Pot_Detection() {
       pot_pulse_cnt = 0;  // 清零脈衝計數器
       pot_detection_state = POT_CHECKING;
       
-      PW0M &= (~mskPW0EN);
-      CM0M &= (~mskCM0SF);             // 關閉 CM0SF 功能
+      // Patch: Protect for PWM accidentally switch mode
+      PW0M &= ~mskPW0EN;    // Disable PWM
+      CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
       PW0D = POT_DETECT_PULSE_TIME;    // 設定 PW0D 數值為檢鍋用值 (6us)
       PW0Y = PWM_MAX_WIDTH;             // 設定 PW0Y 為最大值 patch, 防止不小心反向
       // **觸發檢鍋**
@@ -364,13 +353,17 @@ void Pot_Detection() {
         
       // **如果鍋具存在，轉入 `POT_ANALYZING`**
       if (pot_pulse_cnt < POT_PULSE_THRESHOLD) {
-        pot_detection_state = POT_ANALYZING;
-        f_pot_analyzed = 0;
-        Pot_Analyze();
+        f_pot_detected = 1;
+        
+        //pot_detection_state = POT_ANALYZING;
+        //f_pot_analyzed = 0;
+        //Pot_Analyze();
       } else {  // **鍋具不存在，保持在 `POT_IDLE`，下次重新檢測**
-        pot_detection_state = POT_IDLE;
-        f_pot_detected = 0;  // **重置鍋具檢測狀態**
+        //pot_detection_state = POT_IDLE;
+        f_pot_detected = 0;
       }
+      
+      pot_detection_state = POT_IDLE;
       break;
       
     case POT_ANALYZING:
@@ -632,9 +625,10 @@ void Error_Process(void)
       // Stop_heating again
       stop_heating();
       
+      P10 = 1; //HCW**
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
-      pot_analyze_state = PWR_UP;
+      //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
     }
     return;
   }
@@ -655,6 +649,7 @@ void Error_Process(void)
   // All errors cleared, check if ERROR_RECOVERY_TIME_S seconds have passed
   if ((uint8_t)(system_time_1s - error_clear_time_1s) >= ERROR_RECOVERY_TIME_S) {
       system_state = STANDBY; // Maintain ERROR_RECOVERY_TIME_S seconds without errors before returning to STANDBY
+      P10 = 0; //HCW**
   }
   
 }

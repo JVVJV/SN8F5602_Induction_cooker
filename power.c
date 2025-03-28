@@ -25,17 +25,18 @@ bit f_heating_initialized = 0;     // 加熱功能是否已初始化
 bit f_En_check_current_change = 1;
 
 uint8_t level = 0;
-
-static uint32_t current_sum = 0;
-static uint32_t voltage_sum = 0;
+uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
+uint16_t current_adc_new = 0;  // Store the measured current value (adc_code)
+uint16_t xdata PW0D_backup = 0;
+static uint32_t current_adc_sum = 0;
+static uint32_t voltage_adc_sum = 0;
 
 
 
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
-void current_read(void);
-void voltage_read(void);
+void measure_power_signals(void);
 void stop_heating(void);
 void pause_heating(void);
 void IGBT_C_slowdown(void);
@@ -45,54 +46,72 @@ uint16_t current_lookup_interpolation(uint16_t adc_val);
 
 void Power_read(void)
 {
-  static uint8_t pwr_read_cnt = 0;     // 紀錄執行次數
+  static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
   static uint16_t current_adc_avg = 0;
-  
-  current_read();  // 量測系統電流  
-  voltage_read();  // 量測系統電壓
-  
-  // 計數 Power_read 執行次數
-  pwr_read_cnt++;
-  if (pwr_read_cnt >= measure_per_AC_cycle)
-  { // 每 50/60 Hz 重置
-    //P10 = 1; //HCW**
-    if(f_AC_50Hz){
-      //voltage_avg = voltage_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*61.40477; // V (->avg)
-      //voltage_avg = (voltage_sum*1965)>>22;
-      
-      //voltage_RMS_V = voltage_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
-      //"0.0163" comes from voltage divider calculation.
-      //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
-      voltage_RMS_V = (voltage_sum*2179)>>22;
-      
-      //current_adc_avg = current_sum/MEASUREMENTS_PER_50HZ(160);  // (->avg)
-      current_adc_avg = (current_sum * 3277) >> 19;
-      
+  static bit last_periodic_valid = 0;   // Track previous state of f_periodic_current_valid
+ 
+  // Measure the system current & voltage
+  ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &current_adc_new);
+  ADC_measure_4_avg(VOLTAGE_ADC_CHANNEL, &voltage_adc_new);
+
+  // Handle PERIODIC_HEATING mode separately
+  if (system_state == PERIODIC_HEATING) {
+    if (last_periodic_valid != f_periodic_current_valid) {
+       // Reset accumulators when transitioning into or out of a valid measurement phase
+      pwr_read_cnt = 0;
+      current_adc_sum = 0;
+      voltage_adc_sum = 0;
     }
-    else{
-      //voltage_avg = voltage_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*61.40477; // V (->avg)
-      //voltage_avg = (voltage_sum*591)>>20;
-      
-      //voltage_RMS_V = voltage_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
+    last_periodic_valid = f_periodic_current_valid;  // Update state tracking
+    
+    // If f_periodic_current_valid = 0, skip accumulation
+    if (!f_periodic_current_valid) {
+      return;
+    }
+  }
+  
+  // Skip follow operations if heating is not initialized
+  if (!f_heating_initialized) {
+    return;
+  }
+
+  // Accumulate Data
+  current_adc_sum += current_adc_new;
+  voltage_adc_sum += voltage_adc_new;
+  pwr_read_cnt++;
+ 
+  
+  // Calculate power when reaching a full AC cycle
+  if (pwr_read_cnt >= measure_per_AC_cycle)
+  {
+    if(f_AC_50Hz){
+      //voltage_RMS_V = voltage_adc_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
       //"0.0163" comes from voltage divider calculation.
       //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
-      voltage_RMS_V = (voltage_sum*5243)>>23;
+      voltage_RMS_V = (voltage_adc_sum*2179)>>22;
       
-      //current_adc_avg = current_sum/MEASUREMENTS_PER_60HZ(133); // (->avg)
-      current_adc_avg = (current_sum * 1971) >> 18;
+      //current_adc_avg = current_adc_sum/MEASUREMENTS_PER_50HZ(160);  // (->avg)
+      current_adc_avg = (current_adc_sum * 3277) >> 19;
+    }else{
+      //voltage_RMS_V = voltage_adc_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
+      //"0.0163" comes from voltage divider calculation.
+      //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
+      voltage_RMS_V = (voltage_adc_sum*5243)>>23;
+      
+      //current_adc_avg = current_adc_sum/MEASUREMENTS_PER_60HZ(133); // (->avg)
+      current_adc_avg = (current_adc_sum * 1971) >> 18;
     }
     
     // Remove current_base
     if(current_adc_avg > current_base){
       current_adc_avg -= current_base; 
-    }
-    else {
+    }else{
       current_adc_avg = 0;
     }
     
     // mA (->RMS)
     current_RMS_mA = current_lookup_interpolation(current_adc_avg);
-    
+    // Caculate power
     current_power = (uint32_t)voltage_RMS_V * current_RMS_mA;
     
     #if TUNE_MODE == 1
@@ -103,36 +122,30 @@ void Power_read(void)
 //      while(1);
 //    }
     
-//    tune_record = ;
-//    tune_record = ;
+//    tune_record1 = current_RMS_mA;
+//    tune_record2 = current_power;
     #endif
     
     pwr_read_cnt = 0;
-    current_sum = 0;
-    voltage_sum = 0;
-    //P10 = 0; //HCW**
-    
-    //current_task = TASK_POWER_CONTROL;  // 重置任務狀態為TASK_POWER_CONTROL
+    current_adc_sum = 0;
+    voltage_adc_sum = 0;
   }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void current_read(void)
+void measure_power_signals(void)
 {
-  uint16_t current_new = 0;        // 紀錄此次量測的電流數值
-  //static uint16_t current_new = 0;        // 紀錄此次量測的電流數值
-  //static uint16_t current_IIR_old = 0;    // 紀錄前一次 IIR 運算後的電流值
+  // Measure system current using ADC
+  ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &current_adc_new);
   
-  
-  // 更新 current_IIR_old 為上次的 IIR 新值
-  //current_IIR_old = current_IIR_new;
+  // Measure AC voltage using ADC
+  ADC_measure_4_avg(VOLTAGE_ADC_CHANNEL, &voltage_adc_new);
 
-  // 使用通用函式量測系統電流
-  ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &current_new);
-
-  // IIR 運算
-  //current_IIR_new = (current_new * 2 + current_IIR_old * 98) / 100;
-  current_sum += current_new;
+  // **Only accumulate the measured values when heating is active**
+  if (f_heating_initialized) {
+    current_adc_sum += current_adc_new;
+    voltage_adc_sum += voltage_adc_new;
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -191,25 +204,6 @@ uint16_t current_lookup_interpolation(uint16_t adc_val)
   
   // Theoretically should not reach here.
   return lookupTable[TABLE_SIZE - 1].current;
-}
-
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void voltage_read(void)
-{
-  uint16_t voltage_new = 0;        // 紀錄此次量測的電壓數值
-  //static uint16_t voltage_new = 0;        // 紀錄此次量測的電壓數值
-  //static uint16_t voltage_IIR_old = 0;    // 紀錄前一次 IIR 運算後的電壓值
-  
-  // 更新 voltage_IIR_old 為上次的 IIR 新值
-  //voltage_IIR_old = voltage_IIR_new;
-
-  // 使用通用函式量測電網電壓
-  ADC_measure_4_avg(VOLTAGE_ADC_CHANNEL, &voltage_new);
-
-  // IIR 運算
-  //voltage_IIR_new = (voltage_new * 2 + voltage_IIR_old * 98) / 100;
-  voltage_sum += voltage_new;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -330,7 +324,7 @@ typedef struct {
 const PeriodicConfig code Periodic_table[] = {
     {8, 2}, // level 0: 加熱 8 週期，休息 2 週期（對應 800000mW）
     {5, 5}, // level 1: 加熱 5 週期，休息 5 週期（對應 500000mW）
-    {2, 8}  // level 2: 加熱 2 週期，休息 8 週期（對應 200000mW）
+    {4, 16}  // level 2: 加熱 2 週期，休息 8 週期（對應 200000mW）
 };
 
 void Heat_Control(void)
@@ -369,7 +363,8 @@ void Heat_Control(void)
       case 500000: level = 1; break; // 2檔
       case 200000: level = 2; break; // 3檔
       default: return; // 確保安全
-    } 
+    }
+    target_power = PERIODIC_TARGET_POWER;
     system_state = PERIODIC_HEATING; // 切換系統狀態為間歇加熱模式
   }
 }
@@ -382,23 +377,27 @@ typedef enum {
     PERIODIC_SLOWDOWN_PHASE
 } PeriodicHeatState;
 
+bit f_periodic_current_valid  = 0;  // **Flag to indicate current measurement stabilization**
 
 void Periodic_Power_Control(void) {
   static PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
   static uint8_t sync_count = 0;       
   static uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間*
   static bit f_first_entry = 1;  // **標記是否為第一次進入 PERIODIC_HEATING**
+  static bit f_periodic_pulse_init = 1;  // 標記是否需要 PULSE_WIDTH_PERIODIC_START
   uint8_t elapsed_ticks;
   
   // **確保只有在 PERIODIC_HEATING 狀態下執行**
   if (system_state != PERIODIC_HEATING) {
       f_first_entry = 1;  // **當離開 PERIODIC_HEATING 時，重置標誌**
+      f_periodic_pulse_init = 1;  // **當離開 PERIODIC_HEATING 時，重置標誌**
       return;
   }
   
   // **初始化狀態，僅在進入 PERIODIC_HEATING 的第一個周期執行**
   if (f_first_entry) {
     sync_count = 0;
+    f_periodic_current_valid = 0;
     
     // **判斷是否已經初始化過加熱**
     if (f_heating_initialized) {
@@ -407,7 +406,7 @@ void Periodic_Power_Control(void) {
         periodic_heat_state = PERIODIC_REST_PHASE;
     }
     
-    f_first_entry = 0;  // **清除首次進入標誌**
+    f_first_entry = 0;  // clear f_first_entry
   }  
   
   // **檢查是否有新的 AC 訊號週期**
@@ -423,6 +422,9 @@ void Periodic_Power_Control(void) {
     case PERIODIC_REST_PHASE:
       if (sync_count >= Periodic_table[level].rest_cycle) {
         sync_count = 0;
+        
+        // Backup PW0D before IGBT_C_slowdown
+        PW0D_backup = PW0D;
         IGBT_C_slowdown();
         phase_start_tick = system_ticks;
         periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
@@ -433,12 +435,22 @@ void Periodic_Power_Control(void) {
       // **等待 `ac_half_low_ticks_avg` 週期時間，再進入加熱**
       if (elapsed_ticks >= ac_half_low_ticks_avg) {
         pause_heating();    // Stop IGBT_C_slowdown PWM
-        init_heating(PERIODIC, HEATING_IMMEDIATE);
+        
+        // Restore PW0D after IGBT_C_slowdown
+        PW0D = PW0D_backup;
+        
+        init_heating(HEATING_IMMEDIATE, f_periodic_pulse_init ? PULSE_WIDTH_PERIODIC_START : PULSE_WIDTH_NO_CHANGE);
+        f_periodic_pulse_init = 0;
+        
         periodic_heat_state = PERIODIC_HEAT_PHASE;
       }
       break;
 
     case PERIODIC_HEAT_PHASE:
+      if (sync_count == 2) {
+        f_periodic_current_valid = 1;
+      }
+    
       if (sync_count >= Periodic_table[level].heat_cycle) {
         sync_count = 0;
         phase_start_tick = system_ticks;
@@ -450,18 +462,18 @@ void Periodic_Power_Control(void) {
       // **等待 `ac_half_low_ticks_avg`，才真正停止加熱**
       if (elapsed_ticks >= ac_half_low_ticks_avg) {
         pause_heating();
+        f_periodic_current_valid = 0;
         periodic_heat_state = PERIODIC_REST_PHASE;
       }
       break;
   }
 }
 
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define CURRENT_CHANGE_CHECK_DELAY 2000 // 電流變化檢查延遲時間 (2000ms， 1ms 為基準)
 
-// 初始化加熱功能
-void init_heating(HeatingMode heating_mode, uint8_t sync_ac_low)
+// Initialize heating function
+void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
 { 
   // Wait for AC low if required
   if (sync_ac_low) {
@@ -469,11 +481,21 @@ void init_heating(HeatingMode heating_mode, uint8_t sync_ac_low)
     while (!f_CM3_AC_sync); // Block execution until AC low is detected
   }
   
-  // Set PWM duty cycle
-  if (heating_mode == NORMAL) {
-    PW0D = PWM_MIN_WIDTH;  // NORMAL mode 
-  } else { 
-    PW0D = recorded_1000W_PW0D;  //  PERIODIC mode reference value set to 1000W
+  // Patch: Protect for PWM accidentally switch mode
+  PW0M &= ~mskPW0EN;    // Disable PWM
+  CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
+  
+  // Set PWM duty cycle based on pulse_width_select
+  switch (pulse_width_select) {
+    case PULSE_WIDTH_MIN:  // Set PW0D to minimum width
+        PW0D = PWM_MIN_WIDTH;
+        break;
+    case PULSE_WIDTH_PERIODIC_START:  // PERIODIC mode reference value set to 1000W HCW**
+        PW0D = 280;
+        break;
+    case PULSE_WIDTH_NO_CHANGE:  // **Keep PW0D unchanged**
+    default:
+        break;
   }
   
   // Enable PWM
@@ -495,10 +517,14 @@ void init_heating(HeatingMode heating_mode, uint8_t sync_ac_low)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define SLOWDOWN_PWM_WIDTH  24    // 750ns / 31.25ns = 24 clks
-#define SLOWDOWN_PWM_PERIOD 600   // 18.75us / 31.25ns = 600 clks
+#define SLOWDOWN_PWM_WIDTH  30    // 750ns / 31.25ns = 24 clks
+#define SLOWDOWN_PWM_PERIOD 800   // 18.75us / 31.25ns = 600 clks
 
 void IGBT_C_slowdown(void) {
+    // Patch: Protect for PWM accidentally switch mode
+    PW0M &= ~mskPW0EN;    // Disable PWM
+    CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
+  
     PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**
     PW0D = SLOWDOWN_PWM_WIDTH;    // **設定 PWM 脈衝寬度**
 

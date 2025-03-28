@@ -8,9 +8,11 @@
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 typedef enum {
-    NORMAL,
-    PERIODIC
-} HeatingMode;
+    PULSE_WIDTH_MIN              = 0,  // **Set PW0D to minimum width**
+    PULSE_WIDTH_PERIODIC_START   = 1,  // **Set PW0D to 280 (first-time PERIODIC_HEATING)**
+    PULSE_WIDTH_NO_CHANGE        = 2   // **Keep PW0D unchanged**
+} PulseWidthSelect;
+
 
 #define HEATING_SYNC_AC   1  // Wait for AC low before starting
 #define HEATING_IMMEDIATE 0  // Start immediately without AC synchronization
@@ -18,6 +20,7 @@ typedef enum {
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern bit f_En_check_current_change;
 extern bit f_heating_initialized;
+extern bit f_periodic_current_valid;
 extern uint8_t level;
 
 /*_____ M A C R O S ________________________________________________________*/
@@ -25,7 +28,7 @@ extern uint8_t level;
 /*_____ F U N C T I O N S __________________________________________________*/
 void Measure_Base_Current(void);
 void Power_read(void);
-void init_heating(HeatingMode heating_mode, uint8_t sync_ac_low);
+void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select);
 void stop_heating(void);
 
 #endif  // __POWER_H__

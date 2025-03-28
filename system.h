@@ -106,8 +106,9 @@ extern PotDetectionState pot_detection_state;
 extern PotAnalyzeState pot_analyze_state;
 
 //DEBUG
-extern  uint16_t tune_cnt;
-extern uint32_t tune_record;
+extern xdata uint16_t tune_cnt;
+extern xdata uint32_t tune_record1;
+extern xdata uint32_t tune_record2;
 
 /*_____ M A C R O S ________________________________________________________*/
 
