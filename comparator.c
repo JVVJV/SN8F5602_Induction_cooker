@@ -66,18 +66,20 @@ void Comparator_Init(void)
   IEN2 |= mskECMP1;
   
   // CM2 -------------------------------------------------------
-  // IGBT overvoltage protect @1100V (AC power High or Pot be taken off)
+  // IGBT overvoltage protect @1050V (AC power High or Pot be taken off)
   CM2M = 0;
   // CM2N
   // P05 switch to analog pin
   P0CON |= (1<<5);  
   
   // CM2P
-  // 1100V*2.5K/827.5K = 3.32V
-  // INTERNAL 3.5V*60/64 = 3.28V -> CM2RS = 60 
-  CM2REF = CM2REF_INTREF | 60; 
+  // 1050V*2.5K/827.5K = 3.1722V
+  // INTERNAL 3.5V*58/64 = 3.1718V -> CM2RS = 58 
+  CM2REF = CM2REF_INTREF | 58; 
   
   //CM2REF = CM2REF_INTREF | 38;  //700V
+  //CM2REF = CM2REF_INTREF | 50;  //900V
+  
   
   CM2M = mskCM2EN | mskCM2SF |CM2_FALLING_TRIGGER;
   
@@ -125,7 +127,7 @@ void comparator1_ISR(void) interrupt ISRCmp1
   // 當 CM1 觸發中斷，代表電壓浪湧發生，立起 Surge_Overvoltage_Flag
   Surge_Overvoltage_Flag  = 1;
   
-  // 中斷內 初步停止加熱邏輯
+  // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
 }

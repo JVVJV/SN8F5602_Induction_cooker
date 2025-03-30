@@ -304,7 +304,7 @@ void Power_Control(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define POT_CONFIRM_INTERVAL  2   // 鍋具確認倒數計時值 (2ms)
-#define POT_CHECK_INTERVAL    300 // 鍋具檢測間隔倒數計時值 (300ms)
+#define POT_CHECK_INTERVAL    500 // 鍋具檢測間隔倒數計時值 (500ms)
 #define POT_PULSE_THRESHOLD   30  // 鍋具不存在的脈衝數門檻
 
 PotDetectionState pot_detection_state = POT_IDLE;
@@ -378,19 +378,38 @@ void Pot_Detection() {
 
 }
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void Pot_Detection_In_Heating(void)
-{
-    static bit f_current_pot_checking = 0; // 是否正在倒數的旗標
-  
-    // 僅在加熱狀態下執行檢鍋任務
-    if (system_state != HEATING) {
-        return; // 非 HEATING 狀態時直接返回
-    }
 
-    // 鍋具檢測邏輯
-    #define POT_CURRENT_THRESHOLD 500   // 鍋具電流檢測門檻 (假設單位 mA)
-    #define POT_CHECK_DELAY_MS 30       // 檢測門檻延遲時間 (30ms)
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/**
+ * @brief Checks pot presence during heating using current measurement.
+ *
+ * Sets @ref error_flags.f.Pot_missing if current is below 
+ * @ref POT_PRESENT_CURRENT_MIN_mA. Does not clear the flag here.
+ * The flag will be cleared in @ref Error_Process when system enters ERROR state.
+ */
+
+#define POT_PRESENT_CURRENT_MIN_mA  600 // I_RMS mA 
+
+void Pot_Detection_In_Heating(void) 
+{
+  if (f_power_updated)
+  {
+    f_power_updated = 0;  // Clear flag after consuming it
+
+    if (current_RMS_mA < POT_PRESENT_CURRENT_MIN_mA)
+    {
+      error_flags.f.Pot_missing = 1;  // Pot not detected due to low current
+      // Simply stop the heating logic
+      P01 = 1;  //PWM Pin
+      PW0M = 0;
+    }
+  }
+  
+//   Old approach   
+    // 僅在加熱狀態下執行檢鍋任務
+//    if (system_state != HEATING) {
+//        return; // 非 HEATING 狀態時直接返回
+//    }
 
 //    if (current_IIR_new < POT_CURRENT_THRESHOLD) {
 //        // 電流低於門檻
@@ -409,6 +428,7 @@ void Pot_Detection_In_Heating(void)
 //        f_current_pot_checking = 0; // 清除倒數旗標
 //        cntdown_timer_start(CNTDOWN_TIMER_POT_CHECK, 0); // 停止計時器
 //    }
+
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -638,6 +658,11 @@ void Error_Process(void)
       if (CMOUT & mskCM1OUT) {  // If CM1OUT returns to 1, voltage is back to normal
           Surge_Overvoltage_Flag = 0;
       }
+  }
+  
+  // Clear Pot_missing flag after entering ERROR state
+  if (error_flags.f.Pot_missing) {
+    error_flags.f.Pot_missing = 0;
   }
 
   // If any error flags are still active, update the error_clear_time_1s and return

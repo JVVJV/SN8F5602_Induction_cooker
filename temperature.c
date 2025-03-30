@@ -119,9 +119,9 @@ void Temp_Measure(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義 IGBT 溫度上下限
-#define IGBT_TEMP_UPPER_LIMIT  35   // IGBT 溫度上限 (攝氏度)60
+#define IGBT_TEMP_UPPER_LIMIT  60   // IGBT 溫度上限 (攝氏度)60
 #define IGBT_TEMP_LOWER_LIMIT -20   // IGBT 溫度下限 (攝氏度)
-#define IGBT_TEMP_RECOVERY     30   // IGBT Overheat release temperature 40
+#define IGBT_TEMP_RECOVERY     40   // IGBT Overheat release temperature 40
 
 // 定義 TOP 溫度上下限
 #define TOP_TEMP_UPPER_LIMIT  180   // TOP 溫度上限 (單位：適當的測量單位，例如攝氏度)

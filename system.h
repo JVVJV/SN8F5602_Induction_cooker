@@ -25,6 +25,7 @@ typedef union {
       uint8_t TOP_overheat : 1;
       uint8_t IGBT_sensor_fault : 1;
       uint8_t TOP_sensor_fault : 1;
+      uint8_t Pot_missing : 1;
       uint8_t Over_voltage : 1;
       uint8_t Low_voltage : 1;
       uint8_t Voltage_quick_change : 1;

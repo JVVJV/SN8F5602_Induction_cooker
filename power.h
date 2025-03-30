@@ -21,6 +21,7 @@ typedef enum {
 extern bit f_En_check_current_change;
 extern bit f_heating_initialized;
 extern bit f_periodic_current_valid;
+extern bit f_power_updated;
 extern uint8_t level;
 
 /*_____ M A C R O S ________________________________________________________*/

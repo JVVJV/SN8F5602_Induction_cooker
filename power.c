@@ -23,6 +23,7 @@
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 bit f_heating_initialized = 0;     // 加熱功能是否已初始化
 bit f_En_check_current_change = 1;
+bit f_power_updated = 0;
 
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
@@ -123,9 +124,10 @@ void Power_read(void)
 //    }
     
 //    tune_record1 = current_RMS_mA;
-//    tune_record2 = current_power;
+//    tune_record2 = current_adc_avg;
     #endif
     
+    f_power_updated = 1;
     pwr_read_cnt = 0;
     current_adc_sum = 0;
     voltage_adc_sum = 0;

@@ -130,7 +130,7 @@ void main (void)
             break;
 
         case TASK_CURRENT_POT_CHECK:
-            //Pot_Detection_In_Heating();  // 執行電流檢鍋任務
+            Pot_Detection_In_Heating();  // 執行電流檢鍋任務
             current_task = TASK_SHUTDOWN; // 切換到下一個任務
             break;
 
