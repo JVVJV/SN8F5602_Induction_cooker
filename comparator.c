@@ -106,7 +106,48 @@ void Comparator_Init(void)
   
   IEN2 |= mskECMP3;
   
+  // CM4 -------------------------------------------------------
+  // Current Surge Protection 
+  // Configured for around 10 A
+  
+  // For the prototype, the amplification ratio is approximately 47K/1.25K = 37.6x. With a 10A current + 0.01Ω constantan wire, the output is:
+  // 0.1V × 37.6 = 3.76V. Adding the OP offset base current (~0.385V), 
+  // the total becomes:3.76V + 0.385V = 4.14V
+  
+  CM4M = 0;
+  // CM4N from OPO
+  
+  // CM4P
+  // VDD 5V*48/64 = 3.8V -> CM4RS = 48 
+  //CM4REF = CM4REF_VDD | 48;
+  
+  // VDD 5V*53/64 = 4.14V -> CM4RS = 53 
+  //CM4REF = CM4REF_VDD | 53;
+  
+  // VDD 5V*57/64 = 4.5V -> CM4RS = 57
+  CM4REF = CM4REF_VDD | 57; 
+  
+  // VDD 5V*61/64 = 4.8V -> CM4RS = 61 
+  //CM4REF = CM4REF_VDD | 61; 
+  
+  CM4M = mskCM4SF | CM4_FALLING_TRIGGER | CM4N_OPO;
+  
+  IEN2 |= mskECMP4;
 }
+
+void Surge_Protection_Modify(void)
+{
+  // Since the op-amp's trim value is reduced by 6 (due to die-to-die variations), 
+  // the actual measured base_current must be compared with the default base_current 
+  // to properly adjust the CMP4 protection threshold
+  
+  //TBD...
+  
+  // Enable CM4
+  CM4M |= mskCM4EN;
+}
+
+
 
 void comparator0_ISR(void) interrupt ISRCmp0
 {
@@ -168,4 +209,16 @@ void comparator3_ISR(void) interrupt ISRCmp3
     CM3_AC_sync_cnt++;
     CM3_last_sync_tick = system_ticks; // **Update `last_sync_tick`**
   }
+}
+
+void comparator4_ISR(void) interrupt ISRCmp4
+{  
+  // 當 CM4 觸發中斷，代表電流浪湧發生，立起 Surge_Overcurrent_Flag
+  Surge_Overcurrent_Flag  = 1;
+  
+  // In interrupt, simply stop the heating logic
+  P01 = 1;  //PWM Pin
+  PW0M = 0;
+  
+  P10 = ~P10 ;//HCW**
 }

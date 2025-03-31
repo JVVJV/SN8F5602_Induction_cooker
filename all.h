@@ -337,8 +337,8 @@ void Comparator_Init(void);
 //#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
 //#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us
 //#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
-//#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
-#define PWM_MAX_WIDTH           417         // PWM 最大寬度   417cnt @32MHz = 13us
+#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
+//#define PWM_MAX_WIDTH           417         // PWM 最大寬度   417cnt @32MHz = 13us
 //#define PWM_MAX_WIDTH           320         // PWM 最大寬度   320cnt @32MHz = 10us //HCW**
 //#define PWM_MAX_WIDTH           256         // PWM 最大寬度   250cnt @32MHz = 8us
 
@@ -511,17 +511,22 @@ typedef enum {
 #define HEATING_SYNC_AC   1  // Wait for AC low before starting
 #define HEATING_IMMEDIATE 0  // Start immediately without AC synchronization
 
+#define POWER_CALC_ENABLE  1
+#define POWER_CALC_DISABLE 0
+
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern bit f_En_check_current_change;
 extern bit f_heating_initialized;
-extern bit f_periodic_current_valid;
+extern bit f_power_measure_valid;
+extern bit f_power_updated;
 extern uint8_t level;
+extern uint8_t periodic_AC_sync_cnt;
 
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Measure_Base_Current(void);
 void Power_read(void);
+void reset_power_read_data(void);
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select);
 void stop_heating(void);
 
@@ -609,6 +614,7 @@ typedef union {
       uint8_t TOP_overheat : 1;
       uint8_t IGBT_sensor_fault : 1;
       uint8_t TOP_sensor_fault : 1;
+      uint8_t Pot_missing : 1;
       uint8_t Over_voltage : 1;
       uint8_t Low_voltage : 1;
       uint8_t Voltage_quick_change : 1;
@@ -624,7 +630,7 @@ typedef enum {
   TASK_POWER_CONTROL,           // 功率控制任務
   TASK_QUICK_CHANGE_DETECT,     // 快速變化檢測任務
   
-  TASK_TEMP_MEASURE,        // 溫度測量任務
+  TASK_TEMP_MEASURE,            // 溫度測量任務
   TASK_TEMP_PROCESS,            // 溫度處理任務
     
   TASK_CURRENT_POT_CHECK,       // 電流檢鍋任務
@@ -655,10 +661,10 @@ typedef enum {
 } PotAnalyzeState;
 
 
-#define CNTDOWN_TIMER_POT_DETECT      0 // 鍋具檢測間隔計時器id
-#define CNTDOWN_TIMER_CURRENT_CHANGE  1 // 控制 3000ms 電流變化檢查倒數計時器 ID
-#define CNTDOWN_TIMER_POWER_CONTROL   2 // 控制 5ms POWER_CONTROL
-#define CNTDOWN_TIMER_I2C             3 // I2C 計時器 ID
+#define CNTDOWN_TIMER_POT_DETECT                  0 // 鍋具檢測間隔計時器id
+#define CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY   1 // 控制 16ms 電流變化檢查倒數計時器 ID
+#define CNTDOWN_TIMER_POWER_CONTROL               2 // 控制 5ms POWER_CONTROL
+#define CNTDOWN_TIMER_I2C                         3 // I2C 計時器 ID
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit f_125us;

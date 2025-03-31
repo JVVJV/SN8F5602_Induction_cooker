@@ -84,6 +84,7 @@ extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;
 extern volatile uint8_t Surge_Overvoltage_Flag; // By CM1
+extern volatile uint8_t Surge_Overcurrent_Flag; // By CM4
 
 extern SystemState system_state;
 extern uint32_t power_setting;

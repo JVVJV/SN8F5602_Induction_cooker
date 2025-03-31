@@ -77,6 +77,7 @@ void main (void)
   Measure_AC_Low_Time();  // 量測AC low tume, 用於IGBT C級能量漸放時間 & 啟動間歇加熱時間點
   Detect_AC_Frequency();  // 50Hz or 60Hz
   Measure_Base_Current(); // 量測Base電流, for OP offset
+  Surge_Protection_Modify(); 
   
   // 設置初始系統狀態
   system_state = STANDBY;  // 系統默認進入待機模式

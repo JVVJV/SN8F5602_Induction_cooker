@@ -637,6 +637,7 @@ void Detect_AC_Frequency(void) {
 
 ErrorFlags error_flags = {0};
 volatile uint8_t Surge_Overvoltage_Flag = 0;
+volatile uint8_t Surge_Overcurrent_Flag = 0;
 
 void Error_Process(void)
 {
@@ -644,7 +645,7 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if (Surge_Overvoltage_Flag || error_flags.all_flags) {
+    if (Surge_Overvoltage_Flag || Surge_Overvoltage_Flag || error_flags.all_flags) {
       system_state = ERROR;
       
       error_clear_time_1s = system_time_1s;  // Record the current time
@@ -666,13 +667,20 @@ void Error_Process(void)
       }
   }
   
+  // Check if Surge Overcurrent has recovered
+  if (Surge_Overcurrent_Flag) {
+      if (CMOUT & mskCM4OUT) {  // If CM4OUT returns to 1, current is back to normal
+          Surge_Overcurrent_Flag = 0;
+      }
+  }
+  
   // Clear Pot_missing flag after entering ERROR state
   if (error_flags.f.Pot_missing) {
     error_flags.f.Pot_missing = 0;
   }
 
   // If any error flags are still active, update the error_clear_time_1s and return
-  if (Surge_Overvoltage_Flag || error_flags.all_flags) {
+  if (Surge_Overvoltage_Flag || Surge_Overcurrent_Flag || error_flags.all_flags) {
       error_clear_time_1s = system_time_1s;  // Record the current time
       return;
   }

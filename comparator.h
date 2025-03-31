@@ -120,6 +120,22 @@
 #define CM3REF_VDD      (0<<7)
 #define CM3REF_INTREF   (1<<7)
 
+// CM4M
+#define mskCM4EN    (1<<7)
+#define mskCM4SF    (1<<4)
+
+#define CM4N_CM4N_PIN   (0<<1)
+#define CM4N_CM0P       (1<<1)
+#define CM4N_OPO        (2<<1)
+
+#define CM4_RISING_TRIGGER    (1<<3)
+#define CM4_FALLING_TRIGGER   (0<<3)
+
+// CM4REF
+#define CM4REF_VDD      (0<<7)
+#define CM4REF_INTREF   (1<<7)
+
+
 // CMOUT
 #define mskCM4OUT     (1<<4)
 #define mskCM3OUT     (1<<3)
@@ -151,6 +167,7 @@
 extern volatile bit f_CM3_AC_sync;
 extern volatile uint8_t idata CM3_AC_sync_cnt;
 
+
 /*_____ M A C R O S ________________________________________________________*/
 #define CM0_IRQ_ENABLE  IEN2 |= mskECMP0
 #define CM0_IRQ_DISABLE IEN2 &= (~mskECMP0)
@@ -159,6 +176,6 @@ extern volatile uint8_t idata CM3_AC_sync_cnt;
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Comparator_Init(void);
-
+void Surge_Protection_Modify(void);
 
 #endif  // __COMPARATOR_H__
