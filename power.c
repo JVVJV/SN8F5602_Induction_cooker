@@ -22,12 +22,13 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 bit f_heating_initialized = 0;     // 加熱功能是否已初始化
-bit f_power_updated_in_heating = 0;
+bit f_power_updated = 0;
 
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
 uint16_t current_adc_new = 0;  // Store the measured current value (adc_code)
-uint16_t xdata PW0D_backup = 0;
+uint16_t PW0D_backup = 0;
+static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
 
@@ -46,7 +47,6 @@ uint16_t current_lookup_interpolation(uint16_t adc_val);
 
 void Power_read(void)
 {
-  static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
   static uint16_t current_adc_avg = 0;
   static bit last_power_measure_valid = 0;   // Track previous state of f_power_measure_valid
  
@@ -57,17 +57,9 @@ void Power_read(void)
   // Handle PERIODIC_HEATING mode separately
   if (system_state == PERIODIC_HEATING) {
     if (last_power_measure_valid != f_power_measure_valid) {
-       // Reset accumulators when transitioning into or out of a valid measurement phase
-      pwr_read_cnt = 0;
-      current_adc_sum = 0;
-      voltage_adc_sum = 0;
+      reset_power_read_data();
     }
     last_power_measure_valid = f_power_measure_valid;  // Update state tracking
-    
-//    // If f_power_measure_valid = 0, skip accumulation
-//    if (!f_power_measure_valid) {
-//      return;
-//    }
   }
   
   // Accumulate Data
@@ -109,7 +101,7 @@ void Power_read(void)
     if (f_power_measure_valid) {
       // Caculate power
       current_power = (uint32_t)voltage_RMS_V * current_RMS_mA;
-      f_power_updated_in_heating = 1;
+      f_power_updated = 1;
     }
     
     #if TUNE_MODE == 1
@@ -147,11 +139,25 @@ void measure_power_signals(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/**
+ * @brief Resets internal variables used in power reading.
+ *
+ * This clears the ADC accumulation counters and sample count
+ * used by Power_read(), typically called at startup or heating init.
+ */
+void reset_power_read_data(void)
+{
+  f_power_updated = 0;
+  pwr_read_cnt = 0;
+  current_adc_sum = 0;
+  voltage_adc_sum = 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 typedef struct {
     uint16_t adc;     // ADC valuw without current_base
     uint16_t current; // 對應電流值 (單位：mA)
 } LookupEntry;
-
 
 #define TABLE_SIZE 9
 // ADC_Code(base)
@@ -288,13 +294,10 @@ void stop_heating(void)
   
   f_pot_detected = 0;       // 重置鍋具檢測標誌
   f_heating_initialized = 0;
-  //power_setting = 0;
 }
 
 void pause_heating(void)
 {
-  //P10 = ~P10 ;//HCW**
-  
   // 暫停加熱
   PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
   CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
@@ -327,6 +330,8 @@ const PeriodicConfig code Periodic_table[] = {
 
 void Heat_Control(void)
 {
+  static uint8_t prev_level = 0xFF;  // // For PERIODIC_HEATING, use invalid default to ensure first-time reset
+  
   // 如果系統狀態為 ERROR
   if (system_state == ERROR) {
       return;
@@ -352,17 +357,26 @@ void Heat_Control(void)
   if (power_setting > 800000) {     
     target_power = power_setting; // 設定為實際功率
     system_state = HEATING;       // 切換系統狀態為 HEATING
-    f_power_measure_valid = 1;
+    
+    if (f_heating_initialized) {
+      f_power_measure_valid = 1;
+    }
   }
-  // 間歇加熱模式
-  else {
-    // 檔位判斷
-    switch (power_setting) {
+  else // 間歇加熱模式
+  {
+    switch (power_setting) {    // 檔位判斷
       case 800000: level = 0; break; // 1檔
       case 500000: level = 1; break; // 2檔
       case 200000: level = 2; break; // 3檔
       default: return; // 確保安全
     }
+    // Reset AC sync counter if level has changed
+    if (level != prev_level)
+    {
+      periodic_AC_sync_cnt = 0;
+      prev_level = level;
+    }
+    
     target_power = PERIODIC_TARGET_POWER;
     system_state = PERIODIC_HEATING; // 切換系統狀態為間歇加熱模式
   }
@@ -376,11 +390,11 @@ typedef enum {
     PERIODIC_SLOWDOWN_PHASE
 } PeriodicHeatState;
 
+uint8_t periodic_AC_sync_cnt = 0;
 bit f_power_measure_valid  = 0;  // **Flag to indicate current measurement stabilization**
 
 void Periodic_Power_Control(void) {
   static PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
-  static uint8_t sync_count = 0;       
   static uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間*
   static bit f_first_entry = 1;  // **標記是否為第一次進入 PERIODIC_HEATING**
   static bit f_periodic_pulse_init = 1;  // 標記是否需要 PULSE_WIDTH_PERIODIC_START
@@ -395,7 +409,7 @@ void Periodic_Power_Control(void) {
   
   // **初始化狀態，僅在進入 PERIODIC_HEATING 的第一個周期執行**
   if (f_first_entry) {
-    sync_count = 0;
+    periodic_AC_sync_cnt = 0;
     f_power_measure_valid = 0;
     
     // **判斷是否已經初始化過加熱**
@@ -411,7 +425,7 @@ void Periodic_Power_Control(void) {
   // **檢查是否有新的 AC 訊號週期**
   if (f_CM3_AC_sync) {
       f_CM3_AC_sync = 0;
-      sync_count++;
+      periodic_AC_sync_cnt++;
   }
   
   // **計算經過時間**
@@ -419,8 +433,8 @@ void Periodic_Power_Control(void) {
 
   switch (periodic_heat_state) {
     case PERIODIC_REST_PHASE:
-      if (sync_count >= Periodic_table[level].rest_cycle) {
-        sync_count = 0;
+      if (periodic_AC_sync_cnt >= Periodic_table[level].rest_cycle) {
+        periodic_AC_sync_cnt = 0;
         
         // Backup PW0D before IGBT_C_slowdown
         PW0D_backup = PW0D;
@@ -446,12 +460,12 @@ void Periodic_Power_Control(void) {
       break;
 
     case PERIODIC_HEAT_PHASE:
-      if (sync_count == 2) {
+      if (periodic_AC_sync_cnt == 2) {
         f_power_measure_valid = 1;
       }
     
-      if (sync_count >= Periodic_table[level].heat_cycle) {
-        sync_count = 0;
+      if (periodic_AC_sync_cnt >= Periodic_table[level].heat_cycle) {
+        periodic_AC_sync_cnt = 0;
         phase_start_tick = system_ticks;
         periodic_heat_state = PERIODIC_HEAT_END_PHASE;
       }
@@ -471,7 +485,6 @@ void Periodic_Power_Control(void) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define POT_HEATING_CURRENT_DELAY_MS 16  // Delay pot detection after heating starts
 
-// Initialize heating function
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
 { 
   // Wait for AC low if required
@@ -508,15 +521,10 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
   PW0M |= mskPW0EN;             // Enable PWM
   
-  // Start a 16ms countdown
-  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 
+//  // Start a 16ms countdown
+//  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 
   
-//  if(En_PowerCalc){
-//    f_power_measure_valid = 1;
-//  } else {
-//    f_power_measure_valid = 0;
-//  }
-  
+  reset_power_read_data();
   f_heating_initialized = 1;       // Mark heating as initialized
 }
 

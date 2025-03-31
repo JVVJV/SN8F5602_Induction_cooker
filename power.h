@@ -23,14 +23,16 @@ typedef enum {
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern bit f_heating_initialized;
 extern bit f_power_measure_valid;
-extern bit f_power_updated_in_heating;
+extern bit f_power_updated;
 extern uint8_t level;
+extern uint8_t periodic_AC_sync_cnt;
 
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Measure_Base_Current(void);
 void Power_read(void);
+void reset_power_read_data(void);
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select);
 void stop_heating(void);
 

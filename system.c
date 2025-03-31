@@ -230,9 +230,10 @@ void Power_Control(void)
         if (system_state == HEATING) {
             init_heating(HEATING_SYNC_AC, PULSE_WIDTH_MIN);
         }
+        
         return;  // Exit if heating is not initialized (PERIODIC_HEATING case)
     }
-
+    
     // 當功率大於高功率標準時處理
     if (current_power > HIGH_POWER_LEVEL) {
         if (error_flags.f.Voltage_quick_change) {
@@ -280,8 +281,6 @@ void Power_Control(void)
 //    } else {
 //      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
 //    }
-    
-    P10 = ~P10 ;//HCW**
     
     // Compare target power with actual measured current_power
     if (target_power > current_power) {
@@ -392,15 +391,18 @@ void Pot_Detection() {
 
 void Pot_Detection_In_Heating(void) 
 {
-  // Skip detection if delay timer has not yet expired
-  if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY)) {
+  if (!f_heating_initialized)
+  {
     return;
   }
   
-  if (f_power_updated_in_heating)
+//  // Skip detection if delay timer has not yet expired
+//  if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY)) {
+//    return;
+//  }
+  
+  if (f_power_updated)
   {
-    f_power_updated_in_heating = 0;  // Clear flag after consuming it
-
     if (current_RMS_mA < POT_PRESENT_CURRENT_MIN_mA)
     {
       error_flags.f.Pot_missing = 1;  // Pot not detected due to low current
@@ -650,7 +652,6 @@ void Error_Process(void)
       // Stop_heating again
       stop_heating();
       
-      //P10 = 1; //HCW**
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
       //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
@@ -679,7 +680,6 @@ void Error_Process(void)
   // All errors cleared, check if ERROR_RECOVERY_TIME_S seconds have passed
   if ((uint8_t)(system_time_1s - error_clear_time_1s) >= ERROR_RECOVERY_TIME_S) {
       system_state = STANDBY; // Maintain ERROR_RECOVERY_TIME_S seconds without errors before returning to STANDBY
-      //P10 = 0; //HCW**
   }
   
 }

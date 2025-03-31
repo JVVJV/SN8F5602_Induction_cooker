@@ -130,6 +130,8 @@ void comparator1_ISR(void) interrupt ISRCmp1
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
+  
+  P10 = ~P10 ;//HCW**
 }
 
 void comparator2_ISR(void) interrupt ISRCmp2
