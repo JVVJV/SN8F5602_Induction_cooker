@@ -41,7 +41,7 @@ typedef enum {
   TASK_POWER_CONTROL,           // 功率控制任務
   TASK_QUICK_CHANGE_DETECT,     // 快速變化檢測任務
   
-  TASK_TEMP_MEASURE,        // 溫度測量任務
+  TASK_TEMP_MEASURE,            // 溫度測量任務
   TASK_TEMP_PROCESS,            // 溫度處理任務
     
   TASK_CURRENT_POT_CHECK,       // 電流檢鍋任務
@@ -72,10 +72,10 @@ typedef enum {
 } PotAnalyzeState;
 
 
-#define CNTDOWN_TIMER_POT_DETECT      0 // 鍋具檢測間隔計時器id
-#define CNTDOWN_TIMER_CURRENT_CHANGE  1 // 控制 3000ms 電流變化檢查倒數計時器 ID
-#define CNTDOWN_TIMER_POWER_CONTROL   2 // 控制 5ms POWER_CONTROL
-#define CNTDOWN_TIMER_I2C             3 // I2C 計時器 ID
+#define CNTDOWN_TIMER_POT_DETECT                  0 // 鍋具檢測間隔計時器id
+#define CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY   1 // 控制 16ms 電流變化檢查倒數計時器 ID
+#define CNTDOWN_TIMER_POWER_CONTROL               2 // 控制 5ms POWER_CONTROL
+#define CNTDOWN_TIMER_I2C                         3 // I2C 計時器 ID
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit f_125us;

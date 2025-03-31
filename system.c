@@ -176,13 +176,6 @@ uint16_t target_current = 0;          // 目標電流 mA
 uint16_t current_RMS_mA = 0;
 uint16_t voltage_RMS_V = 0;
 
-// 檢查是否可以啟用電流變化檢查
-void check_enable_current_change() {
-    if (cntdown_timer_expired(CNTDOWN_TIMER_CURRENT_CHANGE)) {
-        f_En_check_current_change = 1; // 啟用檢查電流變化
-    }
-}
-
 // 增加 PWM 寬度
 void Increase_PWM_Width(uint8_t val) {
 //    // 保存 CM2SF 狀態
@@ -240,11 +233,6 @@ void Power_Control(void)
         return;  // Exit if heating is not initialized (PERIODIC_HEATING case)
     }
 
-    // 檢查是否可以啟用電流變化檢查
-    if (f_En_check_current_change) {
-        check_enable_current_change();
-    }
-
     // 當功率大於高功率標準時處理
     if (current_power > HIGH_POWER_LEVEL) {
         if (error_flags.f.Voltage_quick_change) {
@@ -254,14 +242,14 @@ void Power_Control(void)
         }
     }
     
-    // 判斷控制模式
-    if (voltage_RMS_V >= VOLTAGE_THRESHOLD) {
-        // 恆電流控制模式
-        target_current = target_power / VOLTAGE_THRESHOLD;
-    } else {
-        // 恆功率控制模式
-        target_current = target_power / voltage_RMS_V;
-    }
+//    // 判斷控制模式
+//    if (voltage_RMS_V >= VOLTAGE_THRESHOLD) {
+//        // 恆電流控制模式
+//        target_current = target_power / VOLTAGE_THRESHOLD;
+//    } else {
+//        // 恆功率控制模式
+//        target_current = target_power / voltage_RMS_V;
+//    }
     
     #if TUNE_MODE == 1
 //    tune_cnt++;
@@ -286,8 +274,17 @@ void Power_Control(void)
       PW0M |= mskPW0EN;
     }
     
-    // Compare target current with actual measured current
-    if (target_current > current_RMS_mA) {
+//    // Compare target current with actual measured current
+//    if (target_current > current_RMS_mA) {
+//      Increase_PWM_Width(1); 
+//    } else {
+//      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
+//    }
+    
+    P10 = ~P10 ;//HCW**
+    
+    // Compare target power with actual measured current_power
+    if (target_power > current_power) {
       Increase_PWM_Width(1); 
     } else {
       Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
@@ -383,6 +380,9 @@ void Pot_Detection() {
 /**
  * @brief Checks pot presence during heating using current measurement.
  *
+ * Detection is disabled for a short delay after heating starts,
+ * controlled by @ref CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY.
+ *
  * Sets @ref error_flags.f.Pot_missing if current is below 
  * @ref POT_PRESENT_CURRENT_MIN_mA. Does not clear the flag here.
  * The flag will be cleared in @ref Error_Process when system enters ERROR state.
@@ -392,9 +392,14 @@ void Pot_Detection() {
 
 void Pot_Detection_In_Heating(void) 
 {
-  if (f_power_updated)
+  // Skip detection if delay timer has not yet expired
+  if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY)) {
+    return;
+  }
+  
+  if (f_power_updated_in_heating)
   {
-    f_power_updated = 0;  // Clear flag after consuming it
+    f_power_updated_in_heating = 0;  // Clear flag after consuming it
 
     if (current_RMS_mA < POT_PRESENT_CURRENT_MIN_mA)
     {
@@ -645,7 +650,7 @@ void Error_Process(void)
       // Stop_heating again
       stop_heating();
       
-      P10 = 1; //HCW**
+      //P10 = 1; //HCW**
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
       //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
@@ -674,7 +679,7 @@ void Error_Process(void)
   // All errors cleared, check if ERROR_RECOVERY_TIME_S seconds have passed
   if ((uint8_t)(system_time_1s - error_clear_time_1s) >= ERROR_RECOVERY_TIME_S) {
       system_state = STANDBY; // Maintain ERROR_RECOVERY_TIME_S seconds without errors before returning to STANDBY
-      P10 = 0; //HCW**
+      //P10 = 0; //HCW**
   }
   
 }

@@ -22,8 +22,7 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 bit f_heating_initialized = 0;     // 加熱功能是否已初始化
-bit f_En_check_current_change = 1;
-bit f_power_updated = 0;
+bit f_power_updated_in_heating = 0;
 
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
@@ -49,7 +48,7 @@ void Power_read(void)
 {
   static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
   static uint16_t current_adc_avg = 0;
-  static bit last_periodic_valid = 0;   // Track previous state of f_periodic_current_valid
+  static bit last_power_measure_valid = 0;   // Track previous state of f_power_measure_valid
  
   // Measure the system current & voltage
   ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &current_adc_new);
@@ -57,31 +56,25 @@ void Power_read(void)
 
   // Handle PERIODIC_HEATING mode separately
   if (system_state == PERIODIC_HEATING) {
-    if (last_periodic_valid != f_periodic_current_valid) {
+    if (last_power_measure_valid != f_power_measure_valid) {
        // Reset accumulators when transitioning into or out of a valid measurement phase
       pwr_read_cnt = 0;
       current_adc_sum = 0;
       voltage_adc_sum = 0;
     }
-    last_periodic_valid = f_periodic_current_valid;  // Update state tracking
+    last_power_measure_valid = f_power_measure_valid;  // Update state tracking
     
-    // If f_periodic_current_valid = 0, skip accumulation
-    if (!f_periodic_current_valid) {
-      return;
-    }
+//    // If f_power_measure_valid = 0, skip accumulation
+//    if (!f_power_measure_valid) {
+//      return;
+//    }
   }
   
-  // Skip follow operations if heating is not initialized
-  if (!f_heating_initialized) {
-    return;
-  }
-
   // Accumulate Data
   current_adc_sum += current_adc_new;
   voltage_adc_sum += voltage_adc_new;
   pwr_read_cnt++;
  
-  
   // Calculate power when reaching a full AC cycle
   if (pwr_read_cnt >= measure_per_AC_cycle)
   {
@@ -112,8 +105,12 @@ void Power_read(void)
     
     // mA (->RMS)
     current_RMS_mA = current_lookup_interpolation(current_adc_avg);
-    // Caculate power
-    current_power = (uint32_t)voltage_RMS_V * current_RMS_mA;
+    //
+    if (f_power_measure_valid) {
+      // Caculate power
+      current_power = (uint32_t)voltage_RMS_V * current_RMS_mA;
+      f_power_updated_in_heating = 1;
+    }
     
     #if TUNE_MODE == 1
 //    tune_cnt++;
@@ -127,7 +124,6 @@ void Power_read(void)
 //    tune_record2 = current_adc_avg;
     #endif
     
-    f_power_updated = 1;
     pwr_read_cnt = 0;
     current_adc_sum = 0;
     voltage_adc_sum = 0;
@@ -356,6 +352,7 @@ void Heat_Control(void)
   if (power_setting > 800000) {     
     target_power = power_setting; // 設定為實際功率
     system_state = HEATING;       // 切換系統狀態為 HEATING
+    f_power_measure_valid = 1;
   }
   // 間歇加熱模式
   else {
@@ -379,7 +376,7 @@ typedef enum {
     PERIODIC_SLOWDOWN_PHASE
 } PeriodicHeatState;
 
-bit f_periodic_current_valid  = 0;  // **Flag to indicate current measurement stabilization**
+bit f_power_measure_valid  = 0;  // **Flag to indicate current measurement stabilization**
 
 void Periodic_Power_Control(void) {
   static PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
@@ -399,7 +396,7 @@ void Periodic_Power_Control(void) {
   // **初始化狀態，僅在進入 PERIODIC_HEATING 的第一個周期執行**
   if (f_first_entry) {
     sync_count = 0;
-    f_periodic_current_valid = 0;
+    f_power_measure_valid = 0;
     
     // **判斷是否已經初始化過加熱**
     if (f_heating_initialized) {
@@ -450,7 +447,7 @@ void Periodic_Power_Control(void) {
 
     case PERIODIC_HEAT_PHASE:
       if (sync_count == 2) {
-        f_periodic_current_valid = 1;
+        f_power_measure_valid = 1;
       }
     
       if (sync_count >= Periodic_table[level].heat_cycle) {
@@ -464,7 +461,7 @@ void Periodic_Power_Control(void) {
       // **等待 `ac_half_low_ticks_avg`，才真正停止加熱**
       if (elapsed_ticks >= ac_half_low_ticks_avg) {
         pause_heating();
-        f_periodic_current_valid = 0;
+        f_power_measure_valid = 0;
         periodic_heat_state = PERIODIC_REST_PHASE;
       }
       break;
@@ -472,7 +469,7 @@ void Periodic_Power_Control(void) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define CURRENT_CHANGE_CHECK_DELAY 2000 // 電流變化檢查延遲時間 (2000ms， 1ms 為基準)
+#define POT_HEATING_CURRENT_DELAY_MS 16  // Delay pot detection after heating starts
 
 // Initialize heating function
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
@@ -511,10 +508,15 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
   PW0M |= mskPW0EN;             // Enable PWM
   
-  // Start a 2000ms countdown
-  cntdown_timer_start(CNTDOWN_TIMER_CURRENT_CHANGE, CURRENT_CHANGE_CHECK_DELAY); 
+  // Start a 16ms countdown
+  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 
   
-  f_En_check_current_change = 0;   // Disable current change detection temporarily
+//  if(En_PowerCalc){
+//    f_power_measure_valid = 1;
+//  } else {
+//    f_power_measure_valid = 0;
+//  }
+  
   f_heating_initialized = 1;       // Mark heating as initialized
 }
 

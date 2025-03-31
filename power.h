@@ -17,11 +17,13 @@ typedef enum {
 #define HEATING_SYNC_AC   1  // Wait for AC low before starting
 #define HEATING_IMMEDIATE 0  // Start immediately without AC synchronization
 
+#define POWER_CALC_ENABLE  1
+#define POWER_CALC_DISABLE 0
+
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern bit f_En_check_current_change;
 extern bit f_heating_initialized;
-extern bit f_periodic_current_valid;
-extern bit f_power_updated;
+extern bit f_power_measure_valid;
+extern bit f_power_updated_in_heating;
 extern uint8_t level;
 
 /*_____ M A C R O S ________________________________________________________*/
