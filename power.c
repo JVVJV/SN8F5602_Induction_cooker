@@ -237,9 +237,14 @@ void Measure_Base_Current(void) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義電壓和電流快速變化及上下限
-#define VOLTAGE_UPPER_LIMIT 260        // 電壓上限 (單位：適當的測量單位，例如伏特)
-#define VOLTAGE_LOWER_LIMIT 170        // 電壓下限 (單位：適當的測量單位，例如伏特)
-#define CURRENT_UPPER_LIMIT_mA  11000  // 11A = 11000mA
+#define VOLTAGE_UPPER_LIMIT          255     // V 過壓觸發
+#define VOLTAGE_RECOVER_HIGH         245     // V 過壓回復
+
+#define VOLTAGE_LOWER_LIMIT          170     // V 欠壓觸發
+#define VOLTAGE_RECOVER_LOW          180     // V 欠壓回復
+
+#define CURRENT_UPPER_LIMIT_mA      11000   // 11A = 11000mA
+#define CURRENT_RECOVER_LIMIT_mA    10000   // 10A 過流回復
 
 //#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
 //#define CURRENT_CHANGE_THRESHOLD 10    // 電流快速變化閾值 (單位：安培)
@@ -249,31 +254,40 @@ void Quick_Change_Detect() {
 //  static uint16_t last_voltage = 0;     // 上次測量的電壓值
 //  static uint16_t last_current = 0;     // 上次測量的電流值  
   
-    // 檢查電壓是否超過上下限
-    if (voltage_RMS_V > VOLTAGE_UPPER_LIMIT) {
-        error_flags.f.Over_voltage = 1;  // 電壓超過上限
+    // === 過壓檢查與回復 ===
+    if (error_flags.f.Over_voltage) {
+        if (voltage_RMS_V < VOLTAGE_RECOVER_HIGH) {
+            error_flags.f.Over_voltage = 0;
+        }
+    } else if (voltage_RMS_V > VOLTAGE_UPPER_LIMIT) {
+        error_flags.f.Over_voltage = 1;
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
-        
+    }
+  
+    // === 欠壓檢查與回復 ===
+    if (error_flags.f.Low_voltage) {
+        if (voltage_RMS_V > VOLTAGE_RECOVER_LOW) {
+            error_flags.f.Low_voltage = 0;
+        }
     } else if (voltage_RMS_V < VOLTAGE_LOWER_LIMIT) {
-        error_flags.f.Low_voltage = 1;  // 電壓低於下限
+        error_flags.f.Low_voltage = 1;
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
-    } else {
-        error_flags.f.Over_voltage = 0;   // 清除上限標誌
-        error_flags.f.Low_voltage = 0;    // 清除下限標誌
     }
     
-     // 檢查電流是否超過上限
-    if (current_RMS_mA > CURRENT_UPPER_LIMIT_mA) {
-        error_flags.f.Over_current = 1;   // 重用此錯誤旗標
+    // === 過電流檢查與回復 ===
+    if (error_flags.f.Over_current) {
+        if (current_RMS_mA < CURRENT_RECOVER_LIMIT_mA) {
+            error_flags.f.Over_current = 0;
+        }
+    } else if (current_RMS_mA > CURRENT_UPPER_LIMIT_mA) {
+        error_flags.f.Over_current = 1;
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
-    } else {
-        error_flags.f.Over_current = 0;
     }
     
 //    // 檢查電壓是否快速變化
