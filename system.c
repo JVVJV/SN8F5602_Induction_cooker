@@ -656,6 +656,7 @@ void Error_Process(void)
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
       //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
+      P10 = ~P10 ;//HCW**
     }
     return;
   }

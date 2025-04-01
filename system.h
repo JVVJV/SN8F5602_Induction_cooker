@@ -28,10 +28,9 @@ typedef union {
       uint8_t Pot_missing : 1;
       uint8_t Over_voltage : 1;
       uint8_t Low_voltage : 1;
+      uint8_t Over_current : 1;
       uint8_t Voltage_quick_change : 1;
       uint8_t Current_quick_large : 1;
-      uint8_t Voltage_overshoot : 1;
-      uint8_t Voltage_undershoot : 1;
     } f;
     uint16_t all_flags; // 用於快速檢查所有標誌
 } ErrorFlags;

@@ -237,32 +237,44 @@ void Measure_Base_Current(void) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義電壓和電流快速變化及上下限
-#define VOLTAGE_UPPER_LIMIT 280        // 電壓上限 (單位：適當的測量單位，例如伏特)
-#define VOLTAGE_LOWER_LIMIT 90         // 電壓下限 (單位：適當的測量單位，例如伏特)
-#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
-#define CURRENT_CHANGE_THRESHOLD 10    // 電流快速變化閾值 (單位：安培)
+#define VOLTAGE_UPPER_LIMIT 260        // 電壓上限 (單位：適當的測量單位，例如伏特)
+#define VOLTAGE_LOWER_LIMIT 170        // 電壓下限 (單位：適當的測量單位，例如伏特)
+#define CURRENT_UPPER_LIMIT_mA  11000  // 11A = 11000mA
+
+//#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
+//#define CURRENT_CHANGE_THRESHOLD 10    // 電流快速變化閾值 (單位：安培)
 
 void Quick_Change_Detect() {
   // 前一次的測量值
-  static uint16_t last_voltage = 0;     // 上次測量的電壓值
-  static uint16_t last_current = 0;     // 上次測量的電流值  
+//  static uint16_t last_voltage = 0;     // 上次測量的電壓值
+//  static uint16_t last_current = 0;     // 上次測量的電流值  
   
-//    // 檢查電壓是否超過上下限
-//    if (voltage_RMS_V > VOLTAGE_UPPER_LIMIT) {
-//        error_flags.f.Voltage_overshoot = 1;  // 電壓超過上限
-//        system_state = PAUSE;         // 切換系統狀態為暫停
-//        stop_heating();               // 停止加熱操作
-//    } else if (voltage_RMS_V < VOLTAGE_LOWER_LIMIT) {
-//        error_flags.f.Voltage_undershoot = 1;  // 電壓低於下限
-//        system_state = PAUSE;         // 切換系統狀態為暫停
-//        stop_heating();               // 停止加熱操作
-//    } else {
-//        error_flags.f.Voltage_overshoot = 0;  // 清除上限標誌
-//        error_flags.f.Voltage_undershoot = 0; // 清除下限標誌
-//    }
-
-    // 檢查IGBT 過壓
-    // CM2 out 持續時間超過 5ms -> stop_heating
+    // 檢查電壓是否超過上下限
+    if (voltage_RMS_V > VOLTAGE_UPPER_LIMIT) {
+        error_flags.f.Over_voltage = 1;  // 電壓超過上限
+        // Simply stop the heating logic
+        P01 = 1;  //PWM Pin
+        PW0M = 0;
+        
+    } else if (voltage_RMS_V < VOLTAGE_LOWER_LIMIT) {
+        error_flags.f.Low_voltage = 1;  // 電壓低於下限
+        // Simply stop the heating logic
+        P01 = 1;  //PWM Pin
+        PW0M = 0;
+    } else {
+        error_flags.f.Over_voltage = 0;   // 清除上限標誌
+        error_flags.f.Low_voltage = 0;    // 清除下限標誌
+    }
+    
+     // 檢查電流是否超過上限
+    if (current_RMS_mA > CURRENT_UPPER_LIMIT_mA) {
+        error_flags.f.Over_current = 1;   // 重用此錯誤旗標
+        // Simply stop the heating logic
+        P01 = 1;  //PWM Pin
+        PW0M = 0;
+    } else {
+        error_flags.f.Over_current = 0;
+    }
     
 //    // 檢查電壓是否快速變化
 //    if (abs(voltage_IIR_new - last_voltage) > VOLTAGE_CHANGE_THRESHOLD) {

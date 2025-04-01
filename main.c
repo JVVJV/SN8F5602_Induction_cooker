@@ -116,7 +116,7 @@ void main (void)
             break;  
         
         case TASK_QUICK_CHANGE_DETECT:
-            //Quick_Change_Detect();
+            Quick_Change_Detect();
             current_task = TASK_TEMP_MEASURE; // 切換到下一個任務
             break;
 
