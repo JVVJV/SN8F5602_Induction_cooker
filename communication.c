@@ -19,6 +19,7 @@
 
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
+uint8_t i2c_status_code = I2C_STATUS_NORMAL;  // default normal status
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -47,7 +48,7 @@ void I2C_Communication(void) {
       
       if (f_i2c_transaction_type) {
             // **準備 NTC 資料**
-            i2c_buffer[0] = 0x70;
+            i2c_buffer[0] = i2c_status_code;
             i2c_buffer[1] = (uint8_t)TOP_TEMP_C;
             I2C_Write(I2C_SLAVE_ADDRESS, i2c_buffer, 2);
         } else {

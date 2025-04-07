@@ -248,6 +248,22 @@ void I2C_Communication(void);
 #define CM3REF_VDD      (0<<7)
 #define CM3REF_INTREF   (1<<7)
 
+// CM4M
+#define mskCM4EN    (1<<7)
+#define mskCM4SF    (1<<4)
+
+#define CM4N_CM4N_PIN   (0<<1)
+#define CM4N_CM0P       (1<<1)
+#define CM4N_OPO        (2<<1)
+
+#define CM4_RISING_TRIGGER    (1<<3)
+#define CM4_FALLING_TRIGGER   (0<<3)
+
+// CM4REF
+#define CM4REF_VDD      (0<<7)
+#define CM4REF_INTREF   (1<<7)
+
+
 // CMOUT
 #define mskCM4OUT     (1<<4)
 #define mskCM3OUT     (1<<3)
@@ -279,6 +295,7 @@ void I2C_Communication(void);
 extern volatile bit f_CM3_AC_sync;
 extern volatile uint8_t idata CM3_AC_sync_cnt;
 
+
 /*_____ M A C R O S ________________________________________________________*/
 #define CM0_IRQ_ENABLE  IEN2 |= mskECMP0
 #define CM0_IRQ_DISABLE IEN2 &= (~mskECMP0)
@@ -287,7 +304,7 @@ extern volatile uint8_t idata CM3_AC_sync_cnt;
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Comparator_Init(void);
-
+void Surge_Protection_Modify(void);
 
 #endif  // __COMPARATOR_H__
 
@@ -336,8 +353,8 @@ void Comparator_Init(void);
 //#define PWM_MAX_WIDTH           960         // PWM 最大寬度   960cnt @32MHz = 30us
 //#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
 //#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us
-//#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
-#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
+#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
+//#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
 //#define PWM_MAX_WIDTH           417         // PWM 最大寬度   417cnt @32MHz = 13us
 //#define PWM_MAX_WIDTH           320         // PWM 最大寬度   320cnt @32MHz = 10us //HCW**
 //#define PWM_MAX_WIDTH           256         // PWM 最大寬度   250cnt @32MHz = 8us
@@ -617,10 +634,9 @@ typedef union {
       uint8_t Pot_missing : 1;
       uint8_t Over_voltage : 1;
       uint8_t Low_voltage : 1;
+      uint8_t Over_current : 1;
       uint8_t Voltage_quick_change : 1;
       uint8_t Current_quick_large : 1;
-      uint8_t Voltage_overshoot : 1;
-      uint8_t Voltage_undershoot : 1;
     } f;
     uint16_t all_flags; // 用於快速檢查所有標誌
 } ErrorFlags;
@@ -673,6 +689,7 @@ extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;
 extern volatile uint8_t Surge_Overvoltage_Flag; // By CM1
+extern volatile uint8_t Surge_Overcurrent_Flag; // By CM4
 
 extern SystemState system_state;
 extern uint32_t power_setting;

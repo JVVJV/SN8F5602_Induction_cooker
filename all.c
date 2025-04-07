@@ -298,7 +298,48 @@ void Comparator_Init(void)
   
   IEN2 |= mskECMP3;
   
+  // CM4 -------------------------------------------------------
+  // Current Surge Protection 
+  // Configured for around 10 A
+  
+  // For the prototype, the amplification ratio is approximately 47K/1.25K = 37.6x. With a 10A current + 0.01Ω constantan wire, the output is:
+  // 0.1V × 37.6 = 3.76V. Adding the OP offset base current (~0.385V), 
+  // the total becomes:3.76V + 0.385V = 4.14V
+  
+  CM4M = 0;
+  // CM4N from OPO
+  
+  // CM4P
+  // VDD 5V*48/64 = 3.8V -> CM4RS = 48 
+  //CM4REF = CM4REF_VDD | 48;
+  
+  // VDD 5V*53/64 = 4.14V -> CM4RS = 53 
+  //CM4REF = CM4REF_VDD | 53;
+  
+  // VDD 5V*57/64 = 4.5V -> CM4RS = 57
+  CM4REF = CM4REF_VDD | 57; 
+  
+  // VDD 5V*61/64 = 4.8V -> CM4RS = 61 
+  //CM4REF = CM4REF_VDD | 61; 
+  
+  CM4M = mskCM4SF | CM4_FALLING_TRIGGER | CM4N_OPO;
+  
+  IEN2 |= mskECMP4;
 }
+
+void Surge_Protection_Modify(void)
+{
+  // Since the op-amp's trim value is reduced by 6 (due to die-to-die variations), 
+  // the actual measured base_current must be compared with the default base_current 
+  // to properly adjust the CMP4 protection threshold
+  
+  //TBD...
+  
+  // Enable CM4
+  CM4M |= mskCM4EN;
+}
+
+
 
 void comparator0_ISR(void) interrupt ISRCmp0
 {
@@ -322,8 +363,6 @@ void comparator1_ISR(void) interrupt ISRCmp1
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
-  
-  P10 = ~P10 ;//HCW**
 }
 
 void comparator2_ISR(void) interrupt ISRCmp2
@@ -361,6 +400,17 @@ void comparator3_ISR(void) interrupt ISRCmp3
     CM3_last_sync_tick = system_ticks; // **Update `last_sync_tick`**
   }
 }
+
+void comparator4_ISR(void) interrupt ISRCmp4
+{  
+  // 當 CM4 觸發中斷，代表電流浪湧發生，立起 Surge_Overcurrent_Flag
+  Surge_Overcurrent_Flag  = 1;
+  
+  // In interrupt, simply stop the heating logic
+  P01 = 1;  //PWM Pin
+  PW0M = 0;
+}
+
 // === End of comparator.c ===
 
 // === Start of gpio.c ===
@@ -869,6 +919,7 @@ void main (void)
   Measure_AC_Low_Time();  // 量測AC low tume, 用於IGBT C級能量漸放時間 & 啟動間歇加熱時間點
   Detect_AC_Frequency();  // 50Hz or 60Hz
   Measure_Base_Current(); // 量測Base電流, for OP offset
+  Surge_Protection_Modify(); 
   
   // 設置初始系統狀態
   system_state = STANDBY;  // 系統默認進入待機模式
@@ -907,7 +958,7 @@ void main (void)
             break;  
         
         case TASK_QUICK_CHANGE_DETECT:
-            //Quick_Change_Detect();
+            Quick_Change_Detect();
             current_task = TASK_TEMP_MEASURE; // 切換到下一個任務
             break;
 
@@ -1246,32 +1297,58 @@ void Measure_Base_Current(void) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義電壓和電流快速變化及上下限
-#define VOLTAGE_UPPER_LIMIT 280        // 電壓上限 (單位：適當的測量單位，例如伏特)
-#define VOLTAGE_LOWER_LIMIT 90         // 電壓下限 (單位：適當的測量單位，例如伏特)
-#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
-#define CURRENT_CHANGE_THRESHOLD 10    // 電流快速變化閾值 (單位：安培)
+#define VOLTAGE_UPPER_LIMIT          255     // V 過壓觸發
+#define VOLTAGE_RECOVER_HIGH         245     // V 過壓回復
+
+#define VOLTAGE_LOWER_LIMIT          170     // V 欠壓觸發
+#define VOLTAGE_RECOVER_LOW          180     // V 欠壓回復
+
+#define CURRENT_UPPER_LIMIT_mA      11000   // 11A = 11000mA
+#define CURRENT_RECOVER_LIMIT_mA    10000   // 10A 過流回復
+
+//#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
+//#define CURRENT_CHANGE_THRESHOLD 10    // 電流快速變化閾值 (單位：安培)
 
 void Quick_Change_Detect() {
   // 前一次的測量值
-  static uint16_t last_voltage = 0;     // 上次測量的電壓值
-  static uint16_t last_current = 0;     // 上次測量的電流值  
+//  static uint16_t last_voltage = 0;     // 上次測量的電壓值
+//  static uint16_t last_current = 0;     // 上次測量的電流值  
   
-//    // 檢查電壓是否超過上下限
-//    if (voltage_RMS_V > VOLTAGE_UPPER_LIMIT) {
-//        error_flags.f.Voltage_overshoot = 1;  // 電壓超過上限
-//        system_state = PAUSE;         // 切換系統狀態為暫停
-//        stop_heating();               // 停止加熱操作
-//    } else if (voltage_RMS_V < VOLTAGE_LOWER_LIMIT) {
-//        error_flags.f.Voltage_undershoot = 1;  // 電壓低於下限
-//        system_state = PAUSE;         // 切換系統狀態為暫停
-//        stop_heating();               // 停止加熱操作
-//    } else {
-//        error_flags.f.Voltage_overshoot = 0;  // 清除上限標誌
-//        error_flags.f.Voltage_undershoot = 0; // 清除下限標誌
-//    }
-
-    // 檢查IGBT 過壓
-    // CM2 out 持續時間超過 5ms -> stop_heating
+    // === 過壓檢查與回復 ===
+    if (error_flags.f.Over_voltage) {
+        if (voltage_RMS_V < VOLTAGE_RECOVER_HIGH) {
+            error_flags.f.Over_voltage = 0;
+        }
+    } else if (voltage_RMS_V > VOLTAGE_UPPER_LIMIT) {
+        error_flags.f.Over_voltage = 1;
+        // Simply stop the heating logic
+        P01 = 1;  //PWM Pin
+        PW0M = 0;
+    }
+  
+    // === 欠壓檢查與回復 ===
+    if (error_flags.f.Low_voltage) {
+        if (voltage_RMS_V > VOLTAGE_RECOVER_LOW) {
+            error_flags.f.Low_voltage = 0;
+        }
+    } else if (voltage_RMS_V < VOLTAGE_LOWER_LIMIT) {
+        error_flags.f.Low_voltage = 1;
+        // Simply stop the heating logic
+        P01 = 1;  //PWM Pin
+        PW0M = 0;
+    }
+    
+    // === 過電流檢查與回復 ===
+    if (error_flags.f.Over_current) {
+        if (current_RMS_mA < CURRENT_RECOVER_LIMIT_mA) {
+            error_flags.f.Over_current = 0;
+        }
+    } else if (current_RMS_mA > CURRENT_UPPER_LIMIT_mA) {
+        error_flags.f.Over_current = 1;
+        // Simply stop the heating logic
+        P01 = 1;  //PWM Pin
+        PW0M = 0;
+    }
     
 //    // 檢查電壓是否快速變化
 //    if (abs(voltage_IIR_new - last_voltage) > VOLTAGE_CHANGE_THRESHOLD) {
@@ -2237,6 +2314,7 @@ void Detect_AC_Frequency(void) {
 
 ErrorFlags error_flags = {0};
 volatile uint8_t Surge_Overvoltage_Flag = 0;
+volatile uint8_t Surge_Overcurrent_Flag = 0;
 
 void Error_Process(void)
 {
@@ -2244,7 +2322,7 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if (Surge_Overvoltage_Flag || error_flags.all_flags) {
+    if (Surge_Overvoltage_Flag || Surge_Overvoltage_Flag || error_flags.all_flags) {
       system_state = ERROR;
       
       error_clear_time_1s = system_time_1s;  // Record the current time
@@ -2255,6 +2333,7 @@ void Error_Process(void)
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
       //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
+      P10 = ~P10 ;//HCW**
     }
     return;
   }
@@ -2266,13 +2345,20 @@ void Error_Process(void)
       }
   }
   
+  // Check if Surge Overcurrent has recovered
+  if (Surge_Overcurrent_Flag) {
+      if (CMOUT & mskCM4OUT) {  // If CM4OUT returns to 1, current is back to normal
+          Surge_Overcurrent_Flag = 0;
+      }
+  }
+  
   // Clear Pot_missing flag after entering ERROR state
   if (error_flags.f.Pot_missing) {
     error_flags.f.Pot_missing = 0;
   }
 
   // If any error flags are still active, update the error_clear_time_1s and return
-  if (Surge_Overvoltage_Flag || error_flags.all_flags) {
+  if (Surge_Overvoltage_Flag || Surge_Overcurrent_Flag || error_flags.all_flags) {
       error_clear_time_1s = system_time_1s;  // Record the current time
       return;
   }

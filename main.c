@@ -91,6 +91,7 @@ void main (void)
   
   // 進入主程式循環
   while (1) {
+    WDTR = 0x5A; // Clear watchdog
     I2C_Communication();
     
     // 125 μs 定時邏輯
@@ -159,6 +160,7 @@ void main (void)
 void Warmup_Delay(void)
 {
   uint8_t cnt = 0;
+  WDTR = 0x5A; // Clear watchdog
   
   while(cnt < 240) //125us* 240 = 30ms
   {    
