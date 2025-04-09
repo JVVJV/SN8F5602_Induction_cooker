@@ -13,6 +13,7 @@
 #include "config.h"
 #include "system.h"
 #include "power.h"
+#include "PWM.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -171,6 +172,7 @@ void comparator1_ISR(void) interrupt ISRCmp1
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
+  PWM_INTERRUPT_DISABLE;
 }
 
 void comparator2_ISR(void) interrupt ISRCmp2
@@ -217,4 +219,5 @@ void comparator4_ISR(void) interrupt ISRCmp4
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
+  PWM_INTERRUPT_DISABLE;
 }

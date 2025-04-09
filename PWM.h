@@ -36,10 +36,16 @@
 #define mskSFDL         (1<<7)
 #define mskPGOUT        (1<<0)
 
+// IEN3
+#define mskEPW0         (1<<2)
+
+
+
 
 
 /*_____ M A C R O S ________________________________________________________*/
-
+#define PWM_INTERRUPT_ENABLE    IEN3 |= mskEPW0;
+#define PWM_INTERRUPT_DISABLE   IEN3 &= ~mskEPW0;
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void PWM_Init(void);

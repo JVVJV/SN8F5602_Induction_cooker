@@ -11,6 +11,8 @@
 /*_____ I N C L U D E S ____________________________________________________*/
 #include "PWM.h"
 #include "config.h"
+#include "power.h"
+#include "system.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -32,6 +34,20 @@ void PWM_Init(void)
   
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS;
   
+}
+
+void PWM0_ISR(void) interrupt ISRPwm0
+{
+    if ((system_state == PERIODIC_HEATING) &&
+        (periodic_heat_state == PERIODIC_SLOWDOWN_PHASE)) 
+    {
+        if (PW0D < SLOWDOWN_PWM_MAX_WIDTH) {
+            PW0D++;
+        } else {
+            PW0D = SLOWDOWN_PWM_MAX_WIDTH;
+        }
+    }
+
 }
 
 

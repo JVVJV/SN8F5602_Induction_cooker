@@ -416,6 +416,7 @@ void Pot_Detection_In_Heating(void)
       // Simply stop the heating logic
       P01 = 1;  //PWM Pin
       PW0M = 0;
+      PWM_INTERRUPT_DISABLE;
     }
   }
   

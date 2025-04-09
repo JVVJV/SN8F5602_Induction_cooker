@@ -143,6 +143,7 @@ void Buzzer_Init(void)
 
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
+uint8_t i2c_status_code = I2C_STATUS_NORMAL;  // default normal status
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -171,7 +172,7 @@ void I2C_Communication(void) {
       
       if (f_i2c_transaction_type) {
             // **準備 NTC 資料**
-            i2c_buffer[0] = 0x70;
+            i2c_buffer[0] = i2c_status_code;
             i2c_buffer[1] = (uint8_t)TOP_TEMP_C;
             I2C_Write(I2C_SLAVE_ADDRESS, i2c_buffer, 2);
         } else {
@@ -933,6 +934,7 @@ void main (void)
   
   // 進入主程式循環
   while (1) {
+    WDTR = 0x5A; // Clear watchdog
     I2C_Communication();
     
     // 125 μs 定時邏輯
@@ -1001,6 +1003,7 @@ void main (void)
 void Warmup_Delay(void)
 {
   uint8_t cnt = 0;
+  WDTR = 0x5A; // Clear watchdog
   
   while(cnt < 240) //125us* 240 = 30ms
   {    
@@ -1693,6 +1696,7 @@ void PWM_Init(void)
 #include "PWM.h"
 #include "config.h"
 #include "power.h"
+#include "communication.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define SYSTEM_TICKS_PER_1MS    8     // 125us*8 = 1ms
@@ -1744,6 +1748,11 @@ void SystemCLK_Init(void)
   // 32MHz /2 = 16MHz
   CLKSEL = SYS_CLK_DIV2;
   CLKCMD = 0x69;
+  
+  // ILRC Calibration 
+  CLKCAL |= 0x80;
+  FRQCMD = 0x4B;
+  while((CLKCAL&0x80) != 0);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2034,6 +2043,7 @@ void Pot_Detection() {
       } else {  // **鍋具不存在，保持在 `POT_IDLE`，下次重新檢測**
         //pot_detection_state = POT_IDLE;
         f_pot_detected = 0;
+        error_flags.f.Pot_missing = 1;  // Raise missing pot flag
       }
       
       pot_detection_state = POT_IDLE;
@@ -2250,6 +2260,7 @@ void Measure_AC_Low_Time(void) {
       
       // **記錄時間**
       ac_low_periods[i]  = system_ticks - start_ticks;
+      WDTR = 0x5A; // Clear watchdog
     }
 
     // 計算 4 次週期的平均值
@@ -2293,6 +2304,7 @@ void Detect_AC_Frequency(void) {
         // **計算經過的 ticks**
         elapsed_ticks = system_ticks - start_tick;
         ac_ticks[i] = elapsed_ticks;  // **存入 xdata 陣列**
+        WDTR = 0x5A; // Clear watchdog
     }
 
     // **計算 4 次測量的平均值**
@@ -2333,6 +2345,16 @@ void Error_Process(void)
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
       //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
+      
+      // Set I2C status code based on error type
+      if (Surge_Overvoltage_Flag)
+        i2c_status_code = I2C_STATUS_OVERVOLTAGE;
+      else if (Surge_Overcurrent_Flag)
+        i2c_status_code = I2C_STATUS_OVERCURRENT;
+      else
+        i2c_status_code = I2C_STATUS_OTHER_ERROR;
+      
+      
       P10 = ~P10 ;//HCW**
     }
     return;
@@ -2366,6 +2388,7 @@ void Error_Process(void)
   // All errors cleared, check if ERROR_RECOVERY_TIME_S seconds have passed
   if ((uint8_t)(system_time_1s - error_clear_time_1s) >= ERROR_RECOVERY_TIME_S) {
       system_state = STANDBY; // Maintain ERROR_RECOVERY_TIME_S seconds without errors before returning to STANDBY
+      i2c_status_code = I2C_STATUS_NORMAL;  // clear status to normal
   }
   
 }

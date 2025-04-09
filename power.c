@@ -264,6 +264,7 @@ void Quick_Change_Detect() {
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
+        PWM_INTERRUPT_DISABLE;
     }
   
     // === 欠壓檢查與回復 ===
@@ -276,6 +277,7 @@ void Quick_Change_Detect() {
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
+        PWM_INTERRUPT_DISABLE;
     }
     
     // === 過電流檢查與回復 ===
@@ -288,6 +290,7 @@ void Quick_Change_Detect() {
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
+        PWM_INTERRUPT_DISABLE;
     }
     
 //    // 檢查電壓是否快速變化
@@ -316,6 +319,8 @@ void stop_heating(void)
   // 實現停止加熱邏輯
   P01 = 1;  //PWM Pin
   PW0M = 0;
+  PWM_INTERRUPT_DISABLE;
+  
   CM0M &= ~mskCM0SF;        // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
   
   f_pot_detected = 0;       // 重置鍋具檢測標誌
@@ -326,6 +331,7 @@ void pause_heating(void)
 {
   // 暫停加熱
   PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
+  PWM_INTERRUPT_DISABLE;
   CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
   f_heating_initialized = 0;    // Clear加熱已初始化標誌
 }
@@ -386,7 +392,14 @@ void Heat_Control(void)
     
     if (f_heating_initialized) {
       f_power_measure_valid = 1;
+    } else {
+    // Safety check: If switching from PERIODIC_HEATING to HEATING 
+    // before heating has been initialized, make sure to disable any
+    // leftover PWM output or PWM ISR (e.g., from slowdown phase).
+    pause_heating();
     }
+    
+    
   }
   else // 間歇加熱模式
   {
@@ -409,18 +422,12 @@ void Heat_Control(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-typedef enum {
-    PERIODIC_HEAT_PHASE,
-    PERIODIC_HEAT_END_PHASE,  // **確保最後一個加熱週期結束後，先等 `ac_half_low_ticks_avg`**
-    PERIODIC_REST_PHASE,
-    PERIODIC_SLOWDOWN_PHASE
-} PeriodicHeatState;
 
+PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
 uint8_t periodic_AC_sync_cnt = 0;
 bit f_power_measure_valid  = 0;  // **Flag to indicate current measurement stabilization**
 
 void Periodic_Power_Control(void) {
-  static PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
   static uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間*
   static bit f_first_entry = 1;  // **標記是否為第一次進入 PERIODIC_HEATING**
   static bit f_periodic_pulse_init = 1;  // 標記是否需要 PULSE_WIDTH_PERIODIC_START
@@ -555,17 +562,16 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define SLOWDOWN_PWM_WIDTH  30    // 750ns / 31.25ns = 24 clks
-#define SLOWDOWN_PWM_PERIOD 800   // 18.75us / 31.25ns = 600 clks
-
 void IGBT_C_slowdown(void) {
     // Patch: Protect for PWM accidentally switch mode
     PW0M &= ~mskPW0EN;    // Disable PWM
     CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
   
     PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**
-    PW0D = SLOWDOWN_PWM_WIDTH;    // **設定 PWM 脈衝寬度**
+    PW0D = SLOWDOWN_PWM_START_WIDTH;    // **設定 PWM 脈衝寬度**
 
+    PWM_INTERRUPT_ENABLE;
+  
     // **開啟 PWM**
     PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPWM0OUT;
 }
