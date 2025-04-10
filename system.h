@@ -35,6 +35,17 @@ typedef union {
     uint16_t all_flags; // 用於快速檢查所有標誌
 } ErrorFlags;
 
+typedef union {
+    struct {
+        uint8_t IGBT_heat_warning  : 1;
+    } f;
+    uint8_t all_flags;
+} WarningFlags;
+
+
+
+
+
 typedef enum {
   TASK_HEAT_CONTROL,            // 加熱控制任務  
   TASK_POWER_CONTROL,           // 功率控制任務
@@ -82,6 +93,7 @@ extern volatile uint8_t system_ticks;
 extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;
+extern WarningFlags warning_flags;
 extern volatile uint8_t Surge_Overvoltage_Flag; // By CM1
 extern volatile uint8_t Surge_Overcurrent_Flag; // By CM4
 

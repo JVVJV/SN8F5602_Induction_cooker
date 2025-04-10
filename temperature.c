@@ -118,12 +118,16 @@ void Temp_Measure(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 定義 IGBT 溫度上下限
-#define IGBT_TEMP_UPPER_LIMIT  60   // IGBT 溫度上限 (攝氏度)60
+// IGBT temperature error threshold
+#define IGBT_TEMP_UPPER_LIMIT  70   // IGBT 溫度上限 (攝氏度) 70
+#define IGBT_TEMP_RECOVERY     60   // IGBT Overheat recovery threshold 60
 #define IGBT_TEMP_LOWER_LIMIT -20   // IGBT 溫度下限 (攝氏度)
-#define IGBT_TEMP_RECOVERY     40   // IGBT Overheat release temperature 40
 
-// 定義 TOP 溫度上下限
+// Warning temperature threshold before reaching overheat
+#define IGBT_TEMP_WARNING_LIMIT      60    // Start of heat warning zone
+#define IGBT_TEMP_WARNING_RECOVERY   55    // Heat warning recovery threshold
+
+// IGBT temperature error threshold
 #define TOP_TEMP_UPPER_LIMIT  180   // TOP 溫度上限 (單位：適當的測量單位，例如攝氏度)
 #define TOP_TEMP_LOWER_LIMIT  -20   // TOP 溫度下限 (單位：適當的測量單位，例如攝氏度)
 #define TOP_TEMP_RECOVERY     100   // TOP Overheat release temperature
@@ -147,17 +151,25 @@ void Temp_Process(void)
     /* Interpolate between both points. */
     IGBT_TEMP_C = p1 - (((p1-p2)*(IGBT_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
     
-    // 檢查溫度是否異常 IGBT_Temp_Process
+    // Overheat protection
     if (IGBT_TEMP_C > IGBT_TEMP_UPPER_LIMIT) {
       error_flags.f.IGBT_overheat = 1;
     } else if (IGBT_TEMP_C < IGBT_TEMP_RECOVERY) {
       error_flags.f.IGBT_overheat = 0;
     }
 
+    // Sensor fault detection
     if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
       error_flags.f.IGBT_sensor_fault = 1;
     } else {
       error_flags.f.IGBT_sensor_fault = 0;
+    }
+    
+    // Heat warning zone
+    if (IGBT_TEMP_C > IGBT_TEMP_WARNING_LIMIT) {
+      warning_flags.f.IGBT_heat_warning = 1;
+    } else if (IGBT_TEMP_C < IGBT_TEMP_WARNING_RECOVERY) {
+      warning_flags.f.IGBT_heat_warning = 0;
     }
     
     // TOP temperature process

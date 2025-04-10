@@ -126,7 +126,10 @@ void Comparator_Init(void)
   //CM4REF = CM4REF_VDD | 53;
   
   // VDD 5V*57/64 = 4.5V -> CM4RS = 57
-  CM4REF = CM4REF_VDD | 57; 
+  //CM4REF = CM4REF_VDD | 57;
+
+  // VDD 5V*59/64 = 4.609V -> CM4RS = 59
+  CM4REF = CM4REF_VDD | 59;
   
   // VDD 5V*61/64 = 4.8V -> CM4RS = 61 
   //CM4REF = CM4REF_VDD | 61; 

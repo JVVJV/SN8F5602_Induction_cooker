@@ -31,7 +31,7 @@
 #define SYSTEM_TICKS_PER_10MS 80  // 每 10 ms 的計數 (125 μs * 80 = 10 ms)
 #define SYSTEM_10MS_PER_SECOND 100  // 每秒包含的 10 ms 計數
 
-TaskType current_task = TASK_HEAT_CONTROL; // 當前任務
+TaskType current_task = TASK_HEAT_CONTROL;
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -132,7 +132,7 @@ void main (void)
             break;
 
         case TASK_CURRENT_POT_CHECK:
-            Pot_Detection_In_Heating();  // 執行電流檢鍋任務
+            Pot_Detection_In_Heating();
             current_task = TASK_SHUTDOWN; // 切換到下一個任務
             break;
 

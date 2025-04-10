@@ -386,20 +386,25 @@ void Heat_Control(void)
   }
   
   // 一般加熱模式
-  if (power_setting > 800000) {     
-    target_power = power_setting; // 設定為實際功率
+  if (power_setting > 800000) {
+    // If power_setting exceeds 1000W and IGBT heat warning is active,
+    // apply power cap at 1000W to prevent thermal stress.
+    if (warning_flags.f.IGBT_heat_warning) {
+        target_power = 1000000;
+    } else {
+        target_power = power_setting;
+    }
+    
     system_state = HEATING;       // 切換系統狀態為 HEATING
     
     if (f_heating_initialized) {
       f_power_measure_valid = 1;
     } else {
-    // Safety check: If switching from PERIODIC_HEATING to HEATING 
-    // before heating has been initialized, make sure to disable any
-    // leftover PWM output or PWM ISR (e.g., from slowdown phase).
-    pause_heating();
+      // Safety check: If switching from PERIODIC_HEATING to HEATING 
+      // before heating has been initialized, make sure to disable any
+      // leftover PWM output or PWM ISR (e.g., from slowdown phase).
+      pause_heating();
     }
-    
-    
   }
   else // 間歇加熱模式
   {

@@ -43,8 +43,6 @@ uint16_t system_time_1s = 0;          // 系統時間（1 秒為單位
 
 uint8_t measure_per_AC_cycle = MEASUREMENTS_PER_60HZ;
 
-ErrorFlags error_flags;
-
 SystemState system_state = STANDBY;  // 系統初始狀態為待機, should not switch state in ISR, it may switch back in main loop. 
   
   #if TUNE_MODE == 1
@@ -294,13 +292,6 @@ void Power_Control(void)
     } else {
       Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
     }
-    
-    #if TUNE_MODE == 1
-//    if(tune_cnt >= 600)
-//    {
-//      while(1);
-//    }
-    #endif
     
 }
 
@@ -634,8 +625,14 @@ void Detect_AC_Frequency(void) {
     }
     sum /= AC_FREQUENCY_SAMPLES;
 
-    // **判斷 AC 頻率 (50Hz / 60Hz)**
-    f_AC_50Hz = (sum >= AC_60HZ_THRESHOLD) ? 1 : 0;
+    // === Determine AC Frequency (50Hz / 60Hz) ===
+    #if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
+        f_AC_50Hz = 1;
+    #elif AC_FREQ_MODE == AC_FREQ_MODE_FORCE_60HZ
+        f_AC_50Hz = 0;
+    #else
+        f_AC_50Hz = (sum >= AC_60HZ_THRESHOLD) ? 1 : 0;
+    #endif
     
     measure_per_AC_cycle = (f_AC_50Hz) ? MEASUREMENTS_PER_50HZ : MEASUREMENTS_PER_60HZ;
     
@@ -646,6 +643,7 @@ void Detect_AC_Frequency(void) {
 #define ERROR_RECOVERY_TIME_S  2  // Time required for error recovery (seconds)
 
 ErrorFlags error_flags = {0};
+WarningFlags warning_flags = {0};
 volatile uint8_t Surge_Overvoltage_Flag = 0;
 volatile uint8_t Surge_Overcurrent_Flag = 0;
 
@@ -655,7 +653,8 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if (Surge_Overvoltage_Flag || Surge_Overvoltage_Flag || error_flags.all_flags) {
+    if (Surge_Overvoltage_Flag || Surge_Overcurrent_Flag || error_flags.all_flags) {
+      P10 = 1; //HCW**
       system_state = ERROR;
       
       error_clear_time_1s = system_time_1s;  // Record the current time
@@ -668,15 +667,16 @@ void Error_Process(void)
       //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
       
       // Set I2C status code based on error type
-      if (Surge_Overvoltage_Flag)
-        i2c_status_code = I2C_STATUS_OVERVOLTAGE;
-      else if (Surge_Overcurrent_Flag)
-        i2c_status_code = I2C_STATUS_OVERCURRENT;
-      else
-        i2c_status_code = I2C_STATUS_OTHER_ERROR;
-      
-      
-      P10 = ~P10 ;//HCW**
+      // Set I2C status code based on error type
+      if (Surge_Overvoltage_Flag) {
+          i2c_status_code = I2C_STATUS_OVERVOLTAGE;
+      } else if (Surge_Overcurrent_Flag) {
+          i2c_status_code = I2C_STATUS_OVERCURRENT;
+      } else if (error_flags.f.IGBT_overheat) {
+          i2c_status_code = I2C_STATUS_IGBT_OVERHEAT;
+      } else {
+          i2c_status_code = I2C_STATUS_OTHER_ERROR;
+      }
     }
     return;
   }
@@ -710,6 +710,7 @@ void Error_Process(void)
   if ((uint8_t)(system_time_1s - error_clear_time_1s) >= ERROR_RECOVERY_TIME_S) {
       system_state = STANDBY; // Maintain ERROR_RECOVERY_TIME_S seconds without errors before returning to STANDBY
       i2c_status_code = I2C_STATUS_NORMAL;  // clear status to normal
+    P10 = 0; //HCW**
   }
   
 }
