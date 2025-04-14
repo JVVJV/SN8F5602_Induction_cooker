@@ -155,16 +155,11 @@ void Surge_Protection_Modify(void)
 
 void comparator0_ISR(void) interrupt ISRCmp0
 {
-  //P10 = 1; //HCW**
-  
   if(pot_pulse_cnt < 250)
   {
     pot_pulse_cnt++; // 每次中斷觸發，脈衝計數器自增
   }    
   
-  //P10 = 0; //HCW**
- 
-    // 其他 Comparator0 的邏輯可在此處添加
 }
 
 void comparator1_ISR(void) interrupt ISRCmp1
@@ -179,17 +174,17 @@ void comparator1_ISR(void) interrupt ISRCmp1
 }
 
 void comparator2_ISR(void) interrupt ISRCmp2
-{
-  //P10 = 1; //HCW**
-  
-  // Patch for CM2SF can't be triggered by edge.
-  if ((PW0D >= (3 + PWM_MIN_WIDTH))) { // 確保不小於最小值
-      PW0D -= 1;
-  } else {
-      PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
+{  
+  // Only allow PW0D decrease for CMP2 HV protection when f_heating_initialized == 1,
+  // Prevents wrong PW0D update during IGBT_C_SLOWDOWN or other PWM states.
+  if (f_heating_initialized) {
+    // Patch for CM2SF can't be triggered by edge.
+    if ((PW0D >= (3 + PWM_MIN_WIDTH))) { // 確保不小於最小值
+        PW0D -= 1;
+    } else {
+        PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
+    }  
   }
-  
-  //P10 = 0; //HCW**
 }
 
 #define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**

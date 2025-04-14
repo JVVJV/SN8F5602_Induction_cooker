@@ -276,7 +276,7 @@ void Power_Control(void)
     {
       PW0M &= ~mskPW0EN;
       PW0D = PWM_MIN_WIDTH;
-      PW0M |= mskPW0EN;
+      PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // Enable PWM
     }
     
 //    // Compare target current with actual measured current

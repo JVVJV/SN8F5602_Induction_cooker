@@ -21,7 +21,7 @@
 
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-bit f_heating_initialized = 0;     // 加熱功能是否已初始化
+volatile bit f_heating_initialized = 0;     // 加熱功能是否已初始化
 bit f_power_updated = 0;
 
 uint8_t level = 0;
@@ -414,7 +414,8 @@ void Heat_Control(void)
       case 200000: level = 2; break; // 3檔
       default: return; // 確保安全
     }
-    // Reset AC sync counter if level has changed
+    // Reset AC sync counter if level has changed, 
+    // prevent periodic heating mode from switching periodic state at the wrong timing when level changes.
     if (level != prev_level)
     {
       periodic_AC_sync_cnt = 0;
@@ -557,7 +558,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   
   PW0M &= ~mskPW0EN;            // Disable PWM
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
-  PW0M |= mskPW0EN;             // Enable PWM
+  PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  // Enable PWM
   
 //  // Start a 16ms countdown
 //  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 

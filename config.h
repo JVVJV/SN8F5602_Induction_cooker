@@ -32,7 +32,7 @@
 #define AC_FREQ_MODE_FORCE_50HZ   1
 #define AC_FREQ_MODE_FORCE_60HZ   2
 // Select desired AC frequency mode here:
-#define AC_FREQ_MODE  AC_FREQ_MODE_FORCE_50HZ
+#define AC_FREQ_MODE  AC_FREQ_MODE_AUTO
 
 
 #define CURRENT_ADC_CHANNEL       19  // OPO  定義系統電流量測的 ADC 通道 
