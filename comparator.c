@@ -37,8 +37,6 @@ void Comparator_Init(void)
   
   CM0M |= mskCM0EN;
   
-  //CM0_IRQ_ENABLE; //HCW** for experiment
-  
   // INTERNAL REFERENCE VOLTAGE -------------------------------------------------------
   INTREF = mskINTREFEN | INTREF3V5;
   
@@ -76,13 +74,14 @@ void Comparator_Init(void)
   // CM2P
   // 1050V*2.5K/827.5K = 3.1722V
   // INTERNAL 3.5V*58/64 = 3.1718V -> CM2RS = 58 
-  CM2REF = CM2REF_INTREF | 58; 
+  CM2REF = CM2REF_INTREF | 58;    //1050V
   
   //CM2REF = CM2REF_INTREF | 38;  //700V
+  //CM2REF = CM2REF_INTREF | 44;  //800V
   //CM2REF = CM2REF_INTREF | 50;  //900V
   
+  CM2M = mskCM2EN |CM2_FALLING_TRIGGER; // Disable CM2SF HCW**
   
-  CM2M = mskCM2EN | mskCM2SF |CM2_FALLING_TRIGGER;
   
   IEN2 |= mskECMP2;
   
@@ -173,37 +172,46 @@ void comparator1_ISR(void) interrupt ISRCmp1
   PWM_INTERRUPT_DISABLE;
 }
 
+
+// Raise CMP2 PW0D adjustment request flag.
+// Do NOT modify PW0D directly here to avoid race conditions with main/PWM0_ISR. (IC_BUG)
+// The actual PW0D adjustment will be handled safely by either PWM0_ISR or Power_Control().
+
+volatile uint8_t ISR_f_CMP2_PW0D_request = 0;
+
 void comparator2_ISR(void) interrupt ISRCmp2
 {  
-  // Only allow PW0D decrease for CMP2 HV protection when f_heating_initialized == 1,
+  // Only allow PW0D decrease for CMP2 HV protection when f_heating_initialized = 1,
   // Prevents wrong PW0D update during IGBT_C_SLOWDOWN or other PWM states.
   if (f_heating_initialized) {
-    // Patch for CM2SF can't be triggered by edge.
-    if ((PW0D >= (3 + PWM_MIN_WIDTH))) { // 確保不小於最小值
-        PW0D -= 1;
-    } else {
-        PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
-    }  
+    // Set CMP2 PW0D adjustment request flag
+    ISR_f_CMP2_PW0D_request = 1;
+
+    PW0F_CLEAR;
+    PWM_INTERRUPT_ENABLE;
   }
 }
 
 #define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
 /*
-   AC_SYNC_DEBOUNCE_TICKS is used to ensure that `f_CM3_AC_sync` is only triggered at the start of a new AC cycle:
+   AC_SYNC_DEBOUNCE_TICKS is used to ensure that `ISR_f_CM3_AC_sync` is only triggered at the start of a new AC cycle:
    1. When `CM3+` is lower than `CM3-` (0.5V), `CM3_ISR` will be triggered, but there may be signal jitter.
    2. This variable sets `4ms (32 system_ticks)` as the debounce time.
-   3. `f_CM3_AC_sync` is only allowed to be triggered again after `AC_SYNC_DEBOUNCE_TICKS`, preventing jitter from affecting the timing accuracy.
+   3. `ISR_f_CM3_AC_sync` is only allowed to be triggered again after `AC_SYNC_DEBOUNCE_TICKS`, preventing jitter from affecting the timing accuracy.
 */
 
-volatile bit f_CM3_AC_sync = 0;
-volatile uint8_t idata CM3_AC_sync_cnt = 0;
-volatile uint8_t idata CM3_last_sync_tick = 0; // Record the time when `f_CM3_AC_sync` was set to `1`
+volatile uint8_t ISR_f_CM3_AC_sync = 0;
+volatile uint8_t ISR_f_CM3_AC_Zero_sync = 0;
+volatile uint8_t CM3_AC_sync_cnt = 0;
+volatile uint8_t CM3_last_sync_tick = 0; // Record the time when `ISR_f_CM3_AC_sync` was set to `1`
 
 void comparator3_ISR(void) interrupt ISRCmp3
 {
-  // **Ensure that `f_CM3_AC_sync` is only triggered within a new AC cycle**
+  // **Ensure that `ISR_f_CM3_AC_sync` is only triggered within a new AC cycle**
   if ((uint8_t)(system_ticks - CM3_last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
-    f_CM3_AC_sync = 1;       // **Mark the start of a new AC cycle**
+    ISR_f_CM3_AC_sync = 1;       // **Mark the start of a new AC cycle**
+    ISR_f_CM3_AC_Zero_sync = 1;
+    
     CM3_AC_sync_cnt++;
     CM3_last_sync_tick = system_ticks; // **Update `last_sync_tick`**
   }

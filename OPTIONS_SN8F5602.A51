@@ -59,7 +59,7 @@ ROM_SIZE		EQU		0x4800
 ;   <i> The watchdog overflow period is based on Internal Low R-C Clock which has a gentle inaccuracy.
 
 ;  	<o.4..7> Watchdog Reset <0x00=> Disable <0x05=> Enable <0x0A=> Always On 
-    WATCHDOG_SET   		  EQU     0xA0		;	{0x47FF}
+    WATCHDOG_SET   		  EQU     0x00		;	{0x47FF}
 ;   <i> Disable: Turn off watchdog function.
 ;   <i> Enable: Turn on watchdog function only in Normal mode.
 ;   <i> Always: Trun on watchdog function including Normal, IDLE, and STOP mode.

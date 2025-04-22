@@ -71,9 +71,9 @@ void ADC_measure_4_avg(uint8_t channel, uint16_t *result) {
 //        }
 //        sum += samples[i];
 //    }
+//    // 去掉最大值與最小值，計算中間兩次的平均值
+//    sum = sum - max_value - min_value;
     
-    // 去掉最大值與最小值，計算中間兩次的平均值
-    //sum = sum - max_value - min_value;
     *result = sum / 4;  // 回傳結果到指定變數位址
 }
 

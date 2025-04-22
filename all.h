@@ -114,6 +114,7 @@ void Buzzer_Init(void);
 #define I2C_STATUS_OVERVOLTAGE      0x71  // Surge: Over voltage
 #define I2C_STATUS_OVERCURRENT      0x72  // Surge: Over current
 #define I2C_STATUS_OTHER_ERROR      0x73  // Other error flag active
+#define I2C_STATUS_IGBT_OVERHEAT    0x74  // 
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern uint8_t i2c_status_code;  // default normal status
@@ -294,8 +295,10 @@ void I2C_Communication(void);
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile bit f_CM3_AC_sync;
-extern volatile uint8_t idata CM3_AC_sync_cnt;
+extern volatile uint8_t ISR_f_CM3_AC_sync;
+extern volatile uint8_t ISR_f_CM3_AC_Zero_sync;
+extern volatile uint8_t CM3_AC_sync_cnt;
+extern volatile uint8_t CM3_last_sync_tick;
 
 
 /*_____ M A C R O S ________________________________________________________*/
@@ -342,6 +345,15 @@ void Surge_Protection_Modify(void);
 #define MEASUREMENTS_PER_60HZ 133     // 每 60 Hz 完整週期所需的量測次數 (base on 125us)
 #define MEASUREMENTS_PER_50HZ 160     // 每 50 Hz 完整週期所需的量測次數 (base on 125us)
 
+// AC Frequency Mode Control
+#define AC_FREQ_MODE_AUTO         0
+#define AC_FREQ_MODE_FORCE_50HZ   1
+#define AC_FREQ_MODE_FORCE_60HZ   2
+
+// Select desired AC frequency mode here:
+#define AC_FREQ_MODE  AC_FREQ_MODE_AUTO
+
+
 #define CURRENT_ADC_CHANNEL       19  // OPO  定義系統電流量測的 ADC 通道 
 #define VOLTAGE_ADC_CHANNEL       7   // AIN7 定義電網電壓量測的 ADC 通道
 #define IGBT_TEMP_ADC_CHANNEL     1   // AIN1
@@ -354,8 +366,9 @@ void Surge_Protection_Modify(void);
 
 //#define PWM_MAX_WIDTH           960         // PWM 最大寬度   960cnt @32MHz = 30us
 //#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
-//#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us
-#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
+#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us
+//#define PWM_MAX_WIDTH           704         // PWM 最大寬度   704cnt @32MHz = 22us
+//#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
 //#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
 //#define PWM_MAX_WIDTH           417         // PWM 最大寬度   417cnt @32MHz = 13us
 //#define PWM_MAX_WIDTH           320         // PWM 最大寬度   320cnt @32MHz = 10us //HCW**
@@ -436,6 +449,7 @@ void GPIO_Init(void);
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit f_i2c_power_received;   // **功率接收完成標誌**
+
 /*_____ M A C R O S ________________________________________________________*/
 #define I2C_PIN_SET_INPUT_0     P0M &= ~((0x01U<<6)|(0x01U<<7));  //SCL = P06,SDA = P07.
 #define I2C_PIN_SET_INPUT_1     P1M &= ~((0x01U<<3)|(0x01U<<4));	//SCL = P13,SDA = P14.
@@ -521,10 +535,27 @@ void OP_Amp_Init(void);
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 typedef enum {
+    PERIODIC_HEAT_PHASE,
+    PERIODIC_HEAT_END_PHASE,
+    PERIODIC_REST_PHASE,
+    PERIODIC_SLOWDOWN_PHASE
+} PeriodicHeatState;
+
+typedef enum {
     PULSE_WIDTH_MIN              = 0,  // **Set PW0D to minimum width**
     PULSE_WIDTH_PERIODIC_START   = 1,  // **Set PW0D to 280 (first-time PERIODIC_HEATING)**
     PULSE_WIDTH_NO_CHANGE        = 2   // **Keep PW0D unchanged**
 } PulseWidthSelect;
+
+typedef enum {
+    SHAKE_HOLD,
+    SHAKE_DECREASE,
+    SHAKE_INCREASE
+} FrequencyShakeState;
+
+#define SLOWDOWN_PWM_START_WIDTH  20    // 312.5ns / 31.25ns = 10 clks
+#define SLOWDOWN_PWM_MAX_WIDTH    42    // 1.5us / 31.25ns = 48 clks
+#define SLOWDOWN_PWM_PERIOD       640   // 20us / 31.25ns = 640 clks
 
 
 #define HEATING_SYNC_AC   1  // Wait for AC low before starting
@@ -539,6 +570,7 @@ extern bit f_power_measure_valid;
 extern bit f_power_updated;
 extern uint8_t level;
 extern uint8_t periodic_AC_sync_cnt;
+extern PeriodicHeatState periodic_heat_state;
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -548,6 +580,8 @@ void Power_read(void);
 void reset_power_read_data(void);
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select);
 void stop_heating(void);
+void Zero_Crossing_Task(void);
+void Frequency_shake(void);
 
 #endif  // __POWER_H__
 
@@ -593,10 +627,16 @@ void stop_heating(void);
 #define mskSFDL         (1<<7)
 #define mskPGOUT        (1<<0)
 
+// IEN3
+#define mskEPW0         (1<<2)
+
+
+
 
 
 /*_____ M A C R O S ________________________________________________________*/
-
+#define PWM_INTERRUPT_ENABLE    IEN3 |= mskEPW0;
+#define PWM_INTERRUPT_DISABLE   IEN3 &= ~mskEPW0;
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void PWM_Init(void);
@@ -642,6 +682,17 @@ typedef union {
     } f;
     uint16_t all_flags; // 用於快速檢查所有標誌
 } ErrorFlags;
+
+typedef union {
+    struct {
+        uint8_t IGBT_heat_warning  : 1;
+    } f;
+    uint8_t all_flags;
+} WarningFlags;
+
+
+
+
 
 typedef enum {
   TASK_HEAT_CONTROL,            // 加熱控制任務  
@@ -690,6 +741,7 @@ extern volatile uint8_t system_ticks;
 extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;
+extern WarningFlags warning_flags;
 extern volatile uint8_t Surge_Overvoltage_Flag; // By CM1
 extern volatile uint8_t Surge_Overcurrent_Flag; // By CM4
 
@@ -710,6 +762,8 @@ extern uint8_t ac_half_low_ticks_avg;
 extern bit f_pot_detected;
 extern bit f_AC_50Hz; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**
 extern uint8_t measure_per_AC_cycle;
+
+extern bit f_block_occurred;
 
 extern PotDetectionState pot_detection_state;
 extern PotAnalyzeState pot_analyze_state;
@@ -757,8 +811,8 @@ void Error_Process(void);
 /*_____ D E F I N I T I O N S ______________________________________________*/
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern int IGBT_TEMP_C;      // 目前IGBT溫度
-extern int TOP_TEMP_C;       // 目前表面溫度
+extern int idata IGBT_TEMP_C;      // 目前IGBT溫度
+extern int idata TOP_TEMP_C;       // 目前表面溫度
 
 /*_____ M A C R O S ________________________________________________________*/
 

@@ -164,8 +164,12 @@
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile bit f_CM3_AC_sync;
-extern volatile uint8_t idata CM3_AC_sync_cnt;
+extern volatile uint8_t ISR_f_CMP2_PW0D_request;
+
+extern volatile uint8_t ISR_f_CM3_AC_sync;
+extern volatile uint8_t ISR_f_CM3_AC_Zero_sync;
+extern volatile uint8_t CM3_AC_sync_cnt;
+extern volatile uint8_t CM3_last_sync_tick;
 
 
 /*_____ M A C R O S ________________________________________________________*/

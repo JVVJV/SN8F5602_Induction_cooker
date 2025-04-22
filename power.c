@@ -27,12 +27,10 @@ bit f_power_updated = 0;
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
 uint16_t current_adc_new = 0;  // Store the measured current value (adc_code)
-uint16_t PW0D_backup = 0;
+uint16_t idata PW0D_backup = 0;
 static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
-
-
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -43,6 +41,8 @@ void pause_heating(void);
 void IGBT_C_slowdown(void);
 void shutdown_process(void);
 void finalize_shutdown(void);
+void Start_Frequency_jitter(void);
+
 uint16_t current_lookup_interpolation(uint16_t adc_val);
 
 void Power_read(void)
@@ -155,12 +155,12 @@ void reset_power_read_data(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 typedef struct {
-    uint16_t adc;     // ADC valuw without current_base
+    uint16_t adc;     // ADC value without current_base
     uint16_t current; // 對應電流值 (單位：mA)
 } LookupEntry;
 
 #define TABLE_SIZE 9
-// ADC_Code(base)
+
 const LookupEntry code lookupTable[TABLE_SIZE] = {
     {0,    6},
     {500,    1813},
@@ -218,7 +218,6 @@ uint16_t current_lookup_interpolation(uint16_t adc_val)
 #define BASE_CURRENT_LOWER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 - BASE_CURRENT_TOLERANCE)) / 100)
 #define BASE_CURRENT_UPPER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 + BASE_CURRENT_TOLERANCE)) / 100)
 
-
 uint16_t current_base = 0;
 
 void Measure_Base_Current(void) {
@@ -253,7 +252,7 @@ void Quick_Change_Detect() {
   // 前一次的測量值
 //  static uint16_t last_voltage = 0;     // 上次測量的電壓值
 //  static uint16_t last_current = 0;     // 上次測量的電流值  
-  
+
     // === 過壓檢查與回復 ===
     if (error_flags.f.Over_voltage) {
         if (voltage_RMS_V < VOLTAGE_RECOVER_HIGH) {
@@ -342,6 +341,7 @@ void shutdown_process(void)
     stop_heating();
     //save_system_state();
 }
+
 void finalize_shutdown(void)
 {
   _nop_(); //HCW**
@@ -357,12 +357,12 @@ typedef struct {
 const PeriodicConfig code Periodic_table[] = {
     {8, 2}, // level 0: 加熱 8 週期，休息 2 週期（對應 800000mW）
     {5, 5}, // level 1: 加熱 5 週期，休息 5 週期（對應 500000mW）
-    {4, 16}  // level 2: 加熱 2 週期，休息 8 週期（對應 200000mW）
+    {4, 16}  // level 2: 加熱 4 週期，休息 16 週期（對應 200000mW）
 };
 
 void Heat_Control(void)
 {
-  static uint8_t prev_level = 0xFF;  // // For PERIODIC_HEATING, use invalid default to ensure first-time reset
+  static uint8_t idata prev_level = 0xFF;  // // For PERIODIC_HEATING, use invalid default to ensure first-time reset
   
   // 如果系統狀態為 ERROR
   if (system_state == ERROR) {
@@ -378,8 +378,7 @@ void Heat_Control(void)
 
   // 檢查鍋具狀態
   if (f_pot_detected == 0) {
-    // 啟動Fan
-    BUZZER_ENABLE;
+    BUZZER_ENABLE; // ENABLE Fan or Buzzer
     
     Pot_Detection(); // 執行鍋具檢測邏輯
     return;
@@ -428,7 +427,6 @@ void Heat_Control(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
 uint8_t periodic_AC_sync_cnt = 0;
 bit f_power_measure_valid  = 0;  // **Flag to indicate current measurement stabilization**
@@ -462,8 +460,8 @@ void Periodic_Power_Control(void) {
   }  
   
   // **檢查是否有新的 AC 訊號週期**
-  if (f_CM3_AC_sync) {
-      f_CM3_AC_sync = 0;
+  if (ISR_f_CM3_AC_sync) {
+      ISR_f_CM3_AC_sync = 0;
       periodic_AC_sync_cnt++;
   }
   
@@ -528,8 +526,10 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
 { 
   // Wait for AC low if required
   if (sync_ac_low) {
-    f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
-    while (!f_CM3_AC_sync); // Block execution until AC low is detected
+    ISR_f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
+    
+    while (!ISR_f_CM3_AC_sync); // Block execution until AC low is detected
+    f_block_occurred = 1;
   }
   
   // Patch: Protect for PWM accidentally switch mode
@@ -560,7 +560,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  // Enable PWM
   
-//  // Start a 16ms countdown
+//  // Start a 16ms countdown, not use now.
 //  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 
   
   reset_power_read_data();
@@ -575,10 +575,182 @@ void IGBT_C_slowdown(void) {
   
     PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**
     PW0D = SLOWDOWN_PWM_START_WIDTH;    // **設定 PWM 脈衝寬度**
-
+    
+    PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
   
     // **開啟 PWM**
     PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPWM0OUT;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Zero crossing trigger ticks (1 tick = 125us)
+#define ZERO_CROSS_TRIGGER_TICKS_50HZ   15  // 1.875ms
+#define ZERO_CROSS_TRIGGER_TICKS_60HZ   13  // 1.625ms
+
+#if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
+  #define ZERO_CROSS_TRIGGER_TICKS ZERO_CROSS_TRIGGER_TICKS_50HZ
+#elif AC_FREQ_MODE == AC_FREQ_MODE_FORCE_60HZ
+  #define ZERO_CROSS_TRIGGER_TICKS ZERO_CROSS_TRIGGER_TICKS_60HZ
+#endif
+
+static uint8_t real_zero_cross_timer = 0;
+static bit f_zero_cross_task_active = 0;
+
+void Reset_Zero_Crossing_Task(void)
+{
+    ISR_f_CM3_AC_Zero_sync = 0;
+    f_zero_cross_task_active = 0;
+    real_zero_cross_timer = 0;
+}
+
+void Zero_Crossing_Task(void)
+{
+  // If a blocking condition occurred, reset task state
+  if (f_block_occurred) {
+      f_block_occurred = 0;
+      Reset_Zero_Crossing_Task();
+  }
+
+  // Triggered by comparator ISR on AC zero-cross
+  if (ISR_f_CM3_AC_Zero_sync) {
+      ISR_f_CM3_AC_Zero_sync = 0;
+      f_zero_cross_task_active = 1;
+      real_zero_cross_timer = 0;
+  }
+  
+  if (!f_zero_cross_task_active)
+    return;
+
+  real_zero_cross_timer++;
+
+#if AC_FREQ_MODE == AC_FREQ_MODE_AUTO
+  // Runtime decision based on measured AC frequency
+  if (real_zero_cross_timer >= (f_AC_50Hz ? ZERO_CROSS_TRIGGER_TICKS_50HZ : ZERO_CROSS_TRIGGER_TICKS_60HZ)) {
+#else
+  // Compile-time fixed tick threshold
+  if (real_zero_cross_timer >= ZERO_CROSS_TRIGGER_TICKS) {
+#endif
+      
+    f_zero_cross_task_active = 0;
+    real_zero_cross_timer = 0;
+
+    Start_Frequency_jitter();  // Execute zero-cross triggered function(s)
+  }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/**
+ * @brief Controls the PWM frequency jittering sequence for EMI optimization or switching noise reduction.
+ *
+ * This function implements a multi-phase state machine that gradually adjusts the PWM duty
+ * (PW0D) through controlled jittering (decreasing and increasing phases).
+ *
+ * The jitter process is triggered by Start_Frequency_jitter(), and runs over the following states:
+ *
+ *  - JITTER_HOLD:          Initial idle delay before jitter starts
+ *  - JITTER_HOLD_GAP:      Adds a fixed gap (2 ticks) before enabling PWM interrupts to prevent abrupt transitions
+ *  - JITTER_DECREASE:      PWM0_ISR is enabled, and will decrement PW0D gradually
+ *  - JITTER_INCREASE:      PWM0_ISR continues, now incrementing PW0D back
+ *  - JITTER_INCREASE_GAP:  PWM interrupts are disabled, followed by a delay before finalizing
+ *
+ * Two control flags are used:
+ *  - f_jitter_in_progress: Indicates the jitter sequence is running (for general control flow)
+ *  - f_jitter_active:      Specifically indicates that PWM0_ISR is allowed to modify PW0D
+ *
+ * The f_jitter_active flag prevents race conditions between the main control loop and PWM0_ISR.
+ * Without this guard, simultaneous writes to PW0D from the main program and interrupt context
+ * could lead to undefined hardware behavior or unpredictable results.
+ *
+ * This function must be called every 125us tick from the main control loop.
+ */
+
+// JITTER_HOLD duration (unit: 125us ticks)
+#define JITTER_HOLD_TICKS_50HZ     22  // 2.750ms
+#define JITTER_HOLD_TICKS_60HZ     19  // 2.375ms
+
+#define JITTER_DEC_TICKS_50HZ      16  // 2ms
+#define JITTER_DEC_TICKS_60HZ      12  // 1.5ms
+
+#define JITTER_INC_TICKS_50HZ      16  // 2ms
+#define JITTER_INC_TICKS_60HZ      12  // 1.5ms
+
+
+static bit f_jitter_in_progress  = 0;     // 抖頻啟動旗標
+bit f_jitter_active = 0;     // 抖頻啟動旗標
+static uint8_t jitter_state_start_tick = 0;     // 記錄啟動時間點
+FrequencyJitterState Frequency_jitter_state = JITTER_HOLD;
+
+void Frequency_jitter(void)
+{
+  static uint8_t elapsed;
+
+  // 若不在加熱狀態，不執行任何動作
+  if (!f_heating_initialized) {
+    f_jitter_in_progress  = 0;
+    f_jitter_active = 0;
+    Frequency_jitter_state = JITTER_HOLD;
+    return;
+  }
+
+  // 狀態尚未被觸發，什麼都不做
+  if (!f_jitter_in_progress )
+    return;
+
+  elapsed = system_ticks - jitter_state_start_tick;
+
+  switch (Frequency_jitter_state)
+  {
+    case JITTER_HOLD:
+        if (elapsed >= (f_AC_50Hz ? JITTER_HOLD_TICKS_50HZ : JITTER_HOLD_TICKS_60HZ)) {
+            Frequency_jitter_state = JITTER_HOLD_GAP;
+            jitter_state_start_tick = system_ticks;
+        }
+        break;
+        
+    case JITTER_HOLD_GAP:
+        if (elapsed >= 2) {
+            f_jitter_active = 1;
+            Frequency_jitter_state = JITTER_DECREASE;
+            jitter_state_start_tick = system_ticks;
+            PW0F_CLEAR;
+            PWM_INTERRUPT_ENABLE;
+        }
+        break;
+
+    case JITTER_DECREASE:
+        if (elapsed >= (f_AC_50Hz ? JITTER_DEC_TICKS_50HZ : JITTER_DEC_TICKS_60HZ)) {
+            Frequency_jitter_state = JITTER_INCREASE;
+            jitter_state_start_tick = system_ticks;
+        }
+        break;
+
+    case JITTER_INCREASE:
+        if (elapsed >= (f_AC_50Hz ? JITTER_INC_TICKS_50HZ : JITTER_INC_TICKS_60HZ)) {
+            Frequency_jitter_state = JITTER_INCREASE_GAP;
+            jitter_state_start_tick = system_ticks;
+            PWM_INTERRUPT_DISABLE;
+        }
+        break;
+        
+    case JITTER_INCREASE_GAP:
+        if (elapsed >= 2) {
+            Frequency_jitter_state = JITTER_HOLD;
+            f_jitter_in_progress = 0;
+            f_jitter_active = 0;
+        }
+        break;
+  }
+}
+
+void Start_Frequency_jitter(void)
+{   
+    f_jitter_in_progress  = 1;
+    Frequency_jitter_state = JITTER_HOLD;
+    jitter_state_start_tick = system_ticks;
+}
+
+
+
 

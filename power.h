@@ -20,6 +20,15 @@ typedef enum {
     PULSE_WIDTH_NO_CHANGE        = 2   // **Keep PW0D unchanged**
 } PulseWidthSelect;
 
+typedef enum {
+    JITTER_HOLD,            // Initial idle state before jitter starts
+    JITTER_HOLD_GAP,        // Delay (2 ticks) before enabling PWM interrupt
+    JITTER_DECREASE,        // Frequency jitter decreasing phase, PWM0_ISR will decrement PW0D
+    JITTER_INCREASE,        // Frequency jitter increasing phase, PWM0_ISR will increment PW0D
+    JITTER_INCREASE_GAP     // Delay (2 ticks) after disabling PWM interrupt before finishing
+} FrequencyJitterState;
+
+
 #define SLOWDOWN_PWM_START_WIDTH  20    // 312.5ns / 31.25ns = 10 clks
 #define SLOWDOWN_PWM_MAX_WIDTH    42    // 1.5us / 31.25ns = 48 clks
 #define SLOWDOWN_PWM_PERIOD       640   // 20us / 31.25ns = 640 clks
@@ -38,6 +47,8 @@ extern bit f_power_updated;
 extern uint8_t level;
 extern uint8_t periodic_AC_sync_cnt;
 extern PeriodicHeatState periodic_heat_state;
+extern FrequencyJitterState Frequency_jitter_state;
+extern bit f_jitter_active;
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -47,6 +58,8 @@ void Power_read(void);
 void reset_power_read_data(void);
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select);
 void stop_heating(void);
+void Zero_Crossing_Task(void);
+void Frequency_jitter(void);
 
 #endif  // __POWER_H__
 

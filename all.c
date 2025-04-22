@@ -206,6 +206,7 @@ void I2C_Communication(void) {
 #include "config.h"
 #include "system.h"
 #include "power.h"
+#include "PWM.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -318,7 +319,10 @@ void Comparator_Init(void)
   //CM4REF = CM4REF_VDD | 53;
   
   // VDD 5V*57/64 = 4.5V -> CM4RS = 57
-  CM4REF = CM4REF_VDD | 57; 
+  //CM4REF = CM4REF_VDD | 57;
+
+  // VDD 5V*59/64 = 4.609V -> CM4RS = 59
+  CM4REF = CM4REF_VDD | 59;
   
   // VDD 5V*61/64 = 4.8V -> CM4RS = 61 
   //CM4REF = CM4REF_VDD | 61; 
@@ -344,16 +348,11 @@ void Surge_Protection_Modify(void)
 
 void comparator0_ISR(void) interrupt ISRCmp0
 {
-  //P10 = 1; //HCW**
-  
   if(pot_pulse_cnt < 250)
   {
     pot_pulse_cnt++; // 每次中斷觸發，脈衝計數器自增
   }    
   
-  //P10 = 0; //HCW**
- 
-    // 其他 Comparator0 的邏輯可在此處添加
 }
 
 void comparator1_ISR(void) interrupt ISRCmp1
@@ -364,39 +363,43 @@ void comparator1_ISR(void) interrupt ISRCmp1
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
+  PWM_INTERRUPT_DISABLE;
 }
 
 void comparator2_ISR(void) interrupt ISRCmp2
-{
-  //P10 = 1; //HCW**
-  
-  // Patch for CM2SF can't be triggered by edge.
-  if ((PW0D >= (3 + PWM_MIN_WIDTH))) { // 確保不小於最小值
-      PW0D -= 1;
-  } else {
-      PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
+{  
+  // Only allow PW0D decrease for CMP2 HV protection when f_heating_initialized == 1,
+  // Prevents wrong PW0D update during IGBT_C_SLOWDOWN or other PWM states.
+  if (f_heating_initialized) {
+    // Patch for CM2SF can't be triggered by edge.
+    if ((PW0D >= (3 + PWM_MIN_WIDTH))) { // 確保不小於最小值
+        PW0D -= 1;
+    } else {
+        PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
+    }  
   }
-  
-  //P10 = 0; //HCW**
 }
 
 #define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
 /*
-   AC_SYNC_DEBOUNCE_TICKS is used to ensure that `f_CM3_AC_sync` is only triggered at the start of a new AC cycle:
+   AC_SYNC_DEBOUNCE_TICKS is used to ensure that `ISR_f_CM3_AC_sync` is only triggered at the start of a new AC cycle:
    1. When `CM3+` is lower than `CM3-` (0.5V), `CM3_ISR` will be triggered, but there may be signal jitter.
    2. This variable sets `4ms (32 system_ticks)` as the debounce time.
-   3. `f_CM3_AC_sync` is only allowed to be triggered again after `AC_SYNC_DEBOUNCE_TICKS`, preventing jitter from affecting the timing accuracy.
+   3. `ISR_f_CM3_AC_sync` is only allowed to be triggered again after `AC_SYNC_DEBOUNCE_TICKS`, preventing jitter from affecting the timing accuracy.
 */
 
-volatile bit f_CM3_AC_sync = 0;
-volatile uint8_t idata CM3_AC_sync_cnt = 0;
-volatile uint8_t idata CM3_last_sync_tick = 0; // Record the time when `f_CM3_AC_sync` was set to `1`
+volatile uint8_t ISR_f_CM3_AC_sync = 0;
+volatile uint8_t ISR_f_CM3_AC_Zero_sync = 0;
+volatile uint8_t CM3_AC_sync_cnt = 0;
+volatile uint8_t CM3_last_sync_tick = 0; // Record the time when `ISR_f_CM3_AC_sync` was set to `1`
 
 void comparator3_ISR(void) interrupt ISRCmp3
 {
-  // **Ensure that `f_CM3_AC_sync` is only triggered within a new AC cycle**
+  // **Ensure that `ISR_f_CM3_AC_sync` is only triggered within a new AC cycle**
   if ((uint8_t)(system_ticks - CM3_last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
-    f_CM3_AC_sync = 1;       // **Mark the start of a new AC cycle**
+    ISR_f_CM3_AC_sync = 1;       // **Mark the start of a new AC cycle**
+    ISR_f_CM3_AC_Zero_sync = 1;
+    
     CM3_AC_sync_cnt++;
     CM3_last_sync_tick = system_ticks; // **Update `last_sync_tick`**
   }
@@ -410,6 +413,7 @@ void comparator4_ISR(void) interrupt ISRCmp4
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
+  PWM_INTERRUPT_DISABLE;
 }
 
 // === End of comparator.c ===
@@ -874,7 +878,7 @@ void delay_func(void)
 #define SYSTEM_TICKS_PER_10MS 80  // 每 10 ms 的計數 (125 μs * 80 = 10 ms)
 #define SYSTEM_10MS_PER_SECOND 100  // 每秒包含的 10 ms 計數
 
-TaskType current_task = TASK_HEAT_CONTROL; // 當前任務
+TaskType current_task = TASK_HEAT_CONTROL;
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -929,8 +933,10 @@ void main (void)
 //  power_setting = 800000;
   #endif
   
-  // f_125us reset to zero
+  // Reset timing-related flags used for scheduling or synchronization
   f_125us = 0;
+  ISR_f_CM3_AC_Zero_sync = 0;
+  ISR_f_CM3_AC_sync = 0;   // HCW** need to bo modify.
   
   // 進入主程式循環
   while (1) {
@@ -944,10 +950,14 @@ void main (void)
       // 更新系統時間
       Update_System_Time();  
       
-      // 獨立執行任務
+      // 固定任務
       Power_read();
-          
-      // 任務循環
+      
+      Zero_Crossing_Task();
+      Frequency_shake(); 
+      
+      
+      // 次任務循環
       switch (current_task) {
         case TASK_HEAT_CONTROL:
             Heat_Control();
@@ -975,7 +985,7 @@ void main (void)
             break;
 
         case TASK_CURRENT_POT_CHECK:
-            Pot_Detection_In_Heating();  // 執行電流檢鍋任務
+            Pot_Detection_In_Heating();
             current_task = TASK_SHUTDOWN; // 切換到下一個任務
             break;
 
@@ -1012,9 +1022,10 @@ void Warmup_Delay(void)
       f_125us = 0;
       cnt++;
     }
-  }
-  
+  }  
 }
+
+
 
 // === End of main.c ===
 
@@ -1084,18 +1095,16 @@ void OP_Amp_Init(void)
 
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-bit f_heating_initialized = 0;     // 加熱功能是否已初始化
+volatile bit f_heating_initialized = 0;     // 加熱功能是否已初始化
 bit f_power_updated = 0;
 
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
 uint16_t current_adc_new = 0;  // Store the measured current value (adc_code)
-uint16_t PW0D_backup = 0;
+uint16_t idata PW0D_backup = 0;
 static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
-
-
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -1106,6 +1115,8 @@ void pause_heating(void);
 void IGBT_C_slowdown(void);
 void shutdown_process(void);
 void finalize_shutdown(void);
+void Start_Frequency_Shake(void);
+
 uint16_t current_lookup_interpolation(uint16_t adc_val);
 
 void Power_read(void)
@@ -1218,7 +1229,7 @@ void reset_power_read_data(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 typedef struct {
-    uint16_t adc;     // ADC valuw without current_base
+    uint16_t adc;     // ADC value without current_base
     uint16_t current; // 對應電流值 (單位：mA)
 } LookupEntry;
 
@@ -1327,6 +1338,7 @@ void Quick_Change_Detect() {
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
+        PWM_INTERRUPT_DISABLE;
     }
   
     // === 欠壓檢查與回復 ===
@@ -1339,6 +1351,7 @@ void Quick_Change_Detect() {
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
+        PWM_INTERRUPT_DISABLE;
     }
     
     // === 過電流檢查與回復 ===
@@ -1351,6 +1364,7 @@ void Quick_Change_Detect() {
         // Simply stop the heating logic
         P01 = 1;  //PWM Pin
         PW0M = 0;
+        PWM_INTERRUPT_DISABLE;
     }
     
 //    // 檢查電壓是否快速變化
@@ -1379,6 +1393,8 @@ void stop_heating(void)
   // 實現停止加熱邏輯
   P01 = 1;  //PWM Pin
   PW0M = 0;
+  PWM_INTERRUPT_DISABLE;
+  
   CM0M &= ~mskCM0SF;        // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
   
   f_pot_detected = 0;       // 重置鍋具檢測標誌
@@ -1389,6 +1405,7 @@ void pause_heating(void)
 {
   // 暫停加熱
   PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
+  PWM_INTERRUPT_DISABLE;
   CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
   f_heating_initialized = 0;    // Clear加熱已初始化標誌
 }
@@ -1419,7 +1436,7 @@ const PeriodicConfig code Periodic_table[] = {
 
 void Heat_Control(void)
 {
-  static uint8_t prev_level = 0xFF;  // // For PERIODIC_HEATING, use invalid default to ensure first-time reset
+  static uint8_t idata prev_level = 0xFF;  // // For PERIODIC_HEATING, use invalid default to ensure first-time reset
   
   // 如果系統狀態為 ERROR
   if (system_state == ERROR) {
@@ -1443,12 +1460,24 @@ void Heat_Control(void)
   }
   
   // 一般加熱模式
-  if (power_setting > 800000) {     
-    target_power = power_setting; // 設定為實際功率
+  if (power_setting > 800000) {
+    // If power_setting exceeds 1000W and IGBT heat warning is active,
+    // apply power cap at 1000W to prevent thermal stress.
+    if (warning_flags.f.IGBT_heat_warning) {
+        target_power = 1000000;
+    } else {
+        target_power = power_setting;
+    }
+    
     system_state = HEATING;       // 切換系統狀態為 HEATING
     
     if (f_heating_initialized) {
       f_power_measure_valid = 1;
+    } else {
+      // Safety check: If switching from PERIODIC_HEATING to HEATING 
+      // before heating has been initialized, make sure to disable any
+      // leftover PWM output or PWM ISR (e.g., from slowdown phase).
+      pause_heating();
     }
   }
   else // 間歇加熱模式
@@ -1459,7 +1488,8 @@ void Heat_Control(void)
       case 200000: level = 2; break; // 3檔
       default: return; // 確保安全
     }
-    // Reset AC sync counter if level has changed
+    // Reset AC sync counter if level has changed, 
+    // prevent periodic heating mode from switching periodic state at the wrong timing when level changes.
     if (level != prev_level)
     {
       periodic_AC_sync_cnt = 0;
@@ -1472,18 +1502,12 @@ void Heat_Control(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-typedef enum {
-    PERIODIC_HEAT_PHASE,
-    PERIODIC_HEAT_END_PHASE,  // **確保最後一個加熱週期結束後，先等 `ac_half_low_ticks_avg`**
-    PERIODIC_REST_PHASE,
-    PERIODIC_SLOWDOWN_PHASE
-} PeriodicHeatState;
 
+PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
 uint8_t periodic_AC_sync_cnt = 0;
 bit f_power_measure_valid  = 0;  // **Flag to indicate current measurement stabilization**
 
 void Periodic_Power_Control(void) {
-  static PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
   static uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間*
   static bit f_first_entry = 1;  // **標記是否為第一次進入 PERIODIC_HEATING**
   static bit f_periodic_pulse_init = 1;  // 標記是否需要 PULSE_WIDTH_PERIODIC_START
@@ -1512,8 +1536,8 @@ void Periodic_Power_Control(void) {
   }  
   
   // **檢查是否有新的 AC 訊號週期**
-  if (f_CM3_AC_sync) {
-      f_CM3_AC_sync = 0;
+  if (ISR_f_CM3_AC_sync) {
+      ISR_f_CM3_AC_sync = 0;
       periodic_AC_sync_cnt++;
   }
   
@@ -1578,8 +1602,10 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
 { 
   // Wait for AC low if required
   if (sync_ac_low) {
-    f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
-    while (!f_CM3_AC_sync); // Block execution until AC low is detected
+    ISR_f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
+    
+    while (!ISR_f_CM3_AC_sync); // Block execution until AC low is detected
+    f_block_occurred = 1;
   }
   
   // Patch: Protect for PWM accidentally switch mode
@@ -1608,7 +1634,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   
   PW0M &= ~mskPW0EN;            // Disable PWM
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
-  PW0M |= mskPW0EN;             // Enable PWM
+  PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  // Enable PWM
   
 //  // Start a 16ms countdown
 //  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 
@@ -1618,20 +1644,148 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define SLOWDOWN_PWM_WIDTH  30    // 750ns / 31.25ns = 24 clks
-#define SLOWDOWN_PWM_PERIOD 800   // 18.75us / 31.25ns = 600 clks
-
 void IGBT_C_slowdown(void) {
     // Patch: Protect for PWM accidentally switch mode
     PW0M &= ~mskPW0EN;    // Disable PWM
     CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
   
     PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**
-    PW0D = SLOWDOWN_PWM_WIDTH;    // **設定 PWM 脈衝寬度**
+    PW0D = SLOWDOWN_PWM_START_WIDTH;    // **設定 PWM 脈衝寬度**
 
+    PWM_INTERRUPT_ENABLE;
+  
     // **開啟 PWM**
     PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPWM0OUT;
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Zero crossing trigger ticks (1 tick = 125us)
+#define ZERO_CROSS_TRIGGER_TICKS_50HZ   15  // 1.875ms
+#define ZERO_CROSS_TRIGGER_TICKS_60HZ   13  // 1.625ms
+
+#if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
+  #define ZERO_CROSS_TRIGGER_TICKS ZERO_CROSS_TRIGGER_TICKS_50HZ
+#elif AC_FREQ_MODE == AC_FREQ_MODE_FORCE_60HZ
+  #define ZERO_CROSS_TRIGGER_TICKS ZERO_CROSS_TRIGGER_TICKS_60HZ
+#endif
+
+static uint8_t real_zero_cross_timer = 0;
+static bit f_zero_cross_task_active = 0;
+
+void Reset_Zero_Crossing_Task(void)
+{
+    ISR_f_CM3_AC_Zero_sync = 0;
+    f_zero_cross_task_active = 0;
+    real_zero_cross_timer = 0;
+}
+
+void Zero_Crossing_Task(void)
+{
+  // If a blocking condition occurred, reset task state
+  if (f_block_occurred) {
+      f_block_occurred = 0;
+      Reset_Zero_Crossing_Task();
+  }
+
+  // Triggered by comparator ISR on AC zero-cross
+  if (ISR_f_CM3_AC_Zero_sync) {
+      ISR_f_CM3_AC_Zero_sync = 0;
+      f_zero_cross_task_active = 1;
+      real_zero_cross_timer = 0;
+  }
+  
+  if (!f_zero_cross_task_active)
+    return;
+
+  real_zero_cross_timer++;
+
+#if AC_FREQ_MODE == AC_FREQ_MODE_AUTO
+  // Runtime decision based on measured AC frequency
+  if (real_zero_cross_timer >= (f_AC_50Hz ? ZERO_CROSS_TRIGGER_TICKS_50HZ : ZERO_CROSS_TRIGGER_TICKS_60HZ)) {
+#else
+  // Compile-time fixed tick threshold
+  if (real_zero_cross_timer >= ZERO_CROSS_TRIGGER_TICKS) {
+#endif
+      
+    f_zero_cross_task_active = 0;
+    real_zero_cross_timer = 0;
+
+    Start_Frequency_Shake();  // Execute zero-cross triggered function(s)
+  }
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SHAKE_HOLD duration (unit: 125us ticks)
+#define SHAKE_HOLD_TICKS_50HZ     24  // 3ms
+#define SHAKE_HOLD_TICKS_60HZ     21  // 2.625ms
+
+#define SHAKE_DEC_TICKS_50HZ      16  // 2ms
+#define SHAKE_DEC_TICKS_60HZ      12  // 1.5ms
+
+#define SHAKE_INC_TICKS_50HZ      16  // 2ms
+#define SHAKE_INC_TICKS_60HZ      12  // 1.5ms
+
+
+static bit f_shake_active = 0;            // 抖頻啟動旗標
+static uint8_t shake_start_tick = 0;      // 記錄啟動時間點
+static FrequencyShakeState frequency_shake_state = SHAKE_HOLD;
+
+void Frequency_shake(void)
+{
+    static uint8_t elapsed;
+    
+    // 若不在加熱狀態，不執行任何動作
+    if (!f_heating_initialized) {
+        f_shake_active = 0;
+        frequency_shake_state = SHAKE_HOLD;
+        return;
+    }
+
+    // 狀態尚未被觸發，什麼都不做
+    if (!f_shake_active)
+        return;
+
+    elapsed = system_ticks - shake_start_tick;
+
+    switch (frequency_shake_state)
+    {
+        case SHAKE_HOLD:
+            if (elapsed >= (f_AC_50Hz ? SHAKE_HOLD_TICKS_50HZ : SHAKE_HOLD_TICKS_60HZ)) {
+                frequency_shake_state = SHAKE_DECREASE;
+                shake_start_tick = system_ticks;
+                P10 = 0;  //HCW**
+            }
+            break;
+
+        case SHAKE_DECREASE:
+            if (elapsed >= (f_AC_50Hz ? SHAKE_DEC_TICKS_50HZ : SHAKE_DEC_TICKS_60HZ)) {
+                frequency_shake_state = SHAKE_INCREASE;
+                shake_start_tick = system_ticks;
+                P10 = 1;  //HCW**
+            }
+            break;
+
+        case SHAKE_INCREASE:
+            if (elapsed >= (f_AC_50Hz ? SHAKE_INC_TICKS_50HZ : SHAKE_INC_TICKS_60HZ)) {
+                frequency_shake_state = SHAKE_HOLD;
+                f_shake_active = 0;  // 抖頻結束，等待下一次觸發
+                P10 = 0;  //HCW**
+            }
+            break;
+    }
+}
+
+void Start_Frequency_Shake(void)
+{
+    P10 = 1;  //HCW**
+    f_shake_active = 1;
+    frequency_shake_state = SHAKE_HOLD;
+    shake_start_tick = system_ticks;
+}
+
+
+
 
 
 // === End of power.c ===
@@ -1650,6 +1804,8 @@ void IGBT_C_slowdown(void) {
 /*_____ I N C L U D E S ____________________________________________________*/
 #include "PWM.h"
 #include "config.h"
+#include "power.h"
+#include "system.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -1671,6 +1827,20 @@ void PWM_Init(void)
   
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS;
   
+}
+
+void PWM0_ISR(void) interrupt ISRPwm0
+{
+    if ((system_state == PERIODIC_HEATING) &&
+        (periodic_heat_state == PERIODIC_SLOWDOWN_PHASE)) 
+    {
+        if (PW0D < SLOWDOWN_PWM_MAX_WIDTH) {
+            PW0D++;
+        } else {
+            PW0D = SLOWDOWN_PWM_MAX_WIDTH;
+        }
+    }
+
 }
 
 
@@ -1711,8 +1881,9 @@ volatile bit f_125us = 0;
 bit exit_shutdown_flag = 0;
 bit f_shutdown_in_progress = 0;  // 關機進行標誌
 bit f_pot_detected = 0;
-bit f_pot_analyzed = 0;
-uint16_t recorded_1000W_PW0D = 0;
+//bit f_pot_analyzed = 0;
+//uint16_t recorded_1000W_PW0D = 0; // pot_analyze not use now.
+bit f_block_occurred = 0;
 
 uint32_t power_setting = 0;
 uint32_t target_power = 0;            // 目標功率
@@ -1722,8 +1893,6 @@ uint16_t system_time_1ms = 0;         // 系統時間（1 ms 為單位）
 uint16_t system_time_1s = 0;          // 系統時間（1 秒為單位
 
 uint8_t measure_per_AC_cycle = MEASUREMENTS_PER_60HZ;
-
-ErrorFlags error_flags;
 
 SystemState system_state = STANDBY;  // 系統初始狀態為待機, should not switch state in ISR, it may switch back in main loop. 
   
@@ -1958,7 +2127,7 @@ void Power_Control(void)
     {
       PW0M &= ~mskPW0EN;
       PW0D = PWM_MIN_WIDTH;
-      PW0M |= mskPW0EN;
+      PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // Enable PWM
     }
     
 //    // Compare target current with actual measured current
@@ -1974,13 +2143,6 @@ void Power_Control(void)
     } else {
       Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
     }
-    
-    #if TUNE_MODE == 1
-//    if(tune_cnt >= 600)
-//    {
-//      while(1);
-//    }
-    #endif
     
 }
 
@@ -1998,9 +2160,11 @@ void Pot_Detection() {
     return;  // 檢鍋間隔時間未到，直接返回
   }
   
-  f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
-  while (!f_CM3_AC_sync); // Block execution until AC low is detected
-  
+  if (pot_detection_state == POT_IDLE) {
+    ISR_f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
+    while (!ISR_f_CM3_AC_sync); // Block execution until AC low is detected
+    f_block_occurred = 1;
+  }
   
   switch (pot_detection_state) {
     case POT_IDLE:
@@ -2050,12 +2214,12 @@ void Pot_Detection() {
       break;
       
     case POT_ANALYZING:
-      Pot_Analyze();
+//      Pot_Analyze();
 
-      // **若 Pot_Analyze完成
-      if (f_pot_analyzed == 1) {
-        pot_detection_state = POT_IDLE;
-      }
+//      // **若 Pot_Analyze完成
+//      if (f_pot_analyzed == 1) {
+//        pot_detection_state = POT_IDLE;
+//      }
       break;
   }
 
@@ -2096,6 +2260,7 @@ void Pot_Detection_In_Heating(void)
       // Simply stop the heating logic
       P01 = 1;  //PWM Pin
       PW0M = 0;
+      PWM_INTERRUPT_DISABLE;
     }
   }
   
@@ -2132,82 +2297,84 @@ void Pot_Detection_In_Heating(void)
 #define POWER_STABLE_TIME       1000   // 1000ms
 #define POWER_SAMPLE_INTERVAL   100    // 100ms  
 
-PotAnalyzeState pot_analyze_state = PWR_UP;
+// HCW**Cancel the pot analysis process.
 
-void Pot_Analyze(void) {
-    static uint8_t xdata record_count = 0;
-    static uint16_t xdata PW0D_val[4];  // 記錄 4 次 PWM 寬度
-    uint16_t sum;
-    uint8_t i;
-    
-    switch (pot_analyze_state) {
-      case PWR_UP:
-        // **第一步：開始加熱並進入穩定等待狀態**
-        target_power = POT_ANALYZE_POWER;
-        record_count = 0;  // 確保計數器歸零
-        system_state = HEATING;
+//PotAnalyzeState pot_analyze_state = PWR_UP;
 
-        // **啟動 1 秒倒數計時**
-        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_STABLE_TIME);
-        pot_analyze_state = WAIT_STABILIZATION;
-        break;
+//void Pot_Analyze(void) {
+//    static uint8_t xdata record_count = 0;
+//    static uint16_t xdata PW0D_val[4];  // 記錄 4 次 PWM 寬度
+//    uint16_t sum;
+//    uint8_t i;
+//    
+//    switch (pot_analyze_state) {
+//      case PWR_UP:
+//        // **第一步：開始加熱並進入穩定等待狀態**
+//        target_power = POT_ANALYZE_POWER;
+//        record_count = 0;  // 確保計數器歸零
+//        system_state = HEATING;
 
-      case WAIT_STABILIZATION:        
-        // **等待 1 秒穩定**
-        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
-            return; // 等待時間未到，保持當前狀態
-        }
+//        // **啟動 1 秒倒數計時**
+//        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_STABLE_TIME);
+//        pot_analyze_state = WAIT_STABILIZATION;
+//        break;
 
-        // **1 秒結束後，開始記錄**
-        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL); // 啟動 100ms 記錄計時
-        pot_analyze_state = RECORDING;
-        break;
+//      case WAIT_STABILIZATION:        
+//        // **等待 1 秒穩定**
+//        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
+//            return; // 等待時間未到，保持當前狀態
+//        }
 
-      case RECORDING:
-        // **等待 100ms 取樣間隔**
-        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
-            return;
-        }
+//        // **1 秒結束後，開始記錄**
+//        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL); // 啟動 100ms 記錄計時
+//        pot_analyze_state = RECORDING;
+//        break;
 
-        // **重新啟動 100ms 記錄計時**
-        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL);
+//      case RECORDING:
+//        // **等待 100ms 取樣間隔**
+//        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
+//            return;
+//        }
 
-        // **檢查功率是否穩定**
-        if((current_power >= (POT_ANALYZE_POWER-POWER_STABILITY_THRESHOLD)) &&  \
-           (current_power <= (POT_ANALYZE_POWER+POWER_STABILITY_THRESHOLD))     )
-        { PW0D_val[record_count] = PW0D; }
-        else
-        { PW0D_val[record_count] = DEFAULT_1000W_PW0D_VAL; }
-        record_count++;
-        
-        // **當 4 次記錄完成後，計算平均**
-        if (record_count >= 4) {
-          // Align with the AC zero-crossing to prevent surge protection 
-          // from triggering due to rapid voltage rebound after pause_heating.
-          f_CM3_AC_sync = 0;
-          while(f_CM3_AC_sync == 0);
-          // 停止加熱
-          pause_heating();
-          
-          sum = 0;
-          for (i = 0; i < 4; i++) {
-              sum += PW0D_val[i];
-          }
-          recorded_1000W_PW0D = (sum>>2);  // 記錄平均值 = sum/4
-          if(recorded_1000W_PW0D > 640)
-          {
-            recorded_1000W_PW0D  = 640; //HCW**
-          }
-          // **分析完成設置 `f_pot_detected = 1`**
-          f_pot_detected = 1;
-          f_pot_analyzed = 1;
-          // **重置狀態，以便下次測量**
-          pot_analyze_state = PWR_UP;
-        }
-        break;
-    }
-    
-}
+//        // **重新啟動 100ms 記錄計時**
+//        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL);
+
+//        // **檢查功率是否穩定**
+//        if((current_power >= (POT_ANALYZE_POWER-POWER_STABILITY_THRESHOLD)) &&  
+//           (current_power <= (POT_ANALYZE_POWER+POWER_STABILITY_THRESHOLD))     )
+//        { PW0D_val[record_count] = PW0D; }
+//        else
+//        { PW0D_val[record_count] = DEFAULT_1000W_PW0D_VAL; }
+//        record_count++;
+//        
+//        // **當 4 次記錄完成後，計算平均**
+//        if (record_count >= 4) {
+//          // Align with the AC zero-crossing to prevent surge protection 
+//          // from triggering due to rapid voltage rebound after pause_heating.
+//          ISR_f_CM3_AC_sync = 0;
+//          while(ISR_f_CM3_AC_sync == 0);
+//          // 停止加熱
+//          pause_heating();
+//          
+//          sum = 0;
+//          for (i = 0; i < 4; i++) {
+//              sum += PW0D_val[i];
+//          }
+//          recorded_1000W_PW0D = (sum>>2);  // 記錄平均值 = sum/4
+//          if(recorded_1000W_PW0D > 640)
+//          {
+//            recorded_1000W_PW0D  = 640; //HCW**
+//          }
+//          // **分析完成設置 `f_pot_detected = 1`**
+//          f_pot_detected = 1;
+//          f_pot_analyzed = 1;
+//          // **重置狀態，以便下次測量**
+//          pot_analyze_state = PWR_UP;
+//        }
+//        break;
+//    }
+//    
+//}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define AC_PERIOD_COUNT 4  // 取 4 次週期平均
@@ -2215,7 +2382,7 @@ void Pot_Analyze(void) {
 #define PRE_CLEAR_DEBOUNCE_COUNT 3  // 清除中斷前需要 3 次連續確認 HIGH
 #define PRE_CLEAR_DEBOUNCE_INTERVAL 2  // 每 1 個 `system_ticks` 確認一次 (250us)
 
-uint8_t ac_low_periods[AC_PERIOD_COUNT] = {0};  // 記錄最近 4 次 AC 週期時間
+uint8_t idata ac_low_periods[AC_PERIOD_COUNT] = {0};  // 記錄最近 4 次 AC 週期時間
 
 uint8_t ac_half_low_ticks_avg;
 
@@ -2226,12 +2393,12 @@ void Measure_AC_Low_Time(void) {
 //  uint8_t low_count;
 
 //    // **等待中斷發生**           // It’s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM1_ISR, 
-//    while (f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC’s rising edge.
+//    while (ISR_f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC’s rising edge.
   
     // 等待 AC 訊號穩定，收集 4 次數據
     for (i = 0; i < AC_PERIOD_COUNT; i++) {
       
-//      // 軟體 debounce：確保 CM3 真的回到 LOW，f_CM3_AC_sync
+//      // 軟體 debounce：確保 CM3 真的回到 LOW，ISR_f_CM3_AC_sync
 //      low_count = 0;
 //      while (low_count < PRE_CLEAR_DEBOUNCE_COUNT) {
 //        debounce_start = system_ticks;
@@ -2244,10 +2411,10 @@ void Measure_AC_Low_Time(void) {
 //        }
 //      }
       
-      f_CM3_AC_sync = 0;  // **清除中斷標誌**
+      ISR_f_CM3_AC_sync = 0;  // **清除中斷標誌**
 
       // **等待中斷發生**
-      while (f_CM3_AC_sync == 0);
+      while (ISR_f_CM3_AC_sync == 0);
       
       // **開始計時**
       start_ticks = system_ticks;
@@ -2287,19 +2454,19 @@ void Detect_AC_Frequency(void) {
     uint16_t sum = 0;
     uint8_t start_tick, elapsed_ticks;
 
-    f_CM3_AC_sync = 0;
+    ISR_f_CM3_AC_sync = 0;
   
     for (i = 0; i < AC_FREQUENCY_SAMPLES; i++) {
-        // **等待 f_CM3_AC_sync 立起**
-        while (!f_CM3_AC_sync);
-        f_CM3_AC_sync = 0;  // **清除標誌**
+        // **等待 ISR_f_CM3_AC_sync 立起**
+        while (!ISR_f_CM3_AC_sync);
+        ISR_f_CM3_AC_sync = 0;  // **清除標誌**
         
         // **記錄開始時間**
         start_tick = system_ticks;
 
-        // **等待下一次 f_CM3_AC_sync 立起**
-        while (!f_CM3_AC_sync);
-        f_CM3_AC_sync = 0;  // **清除標誌**
+        // **等待下一次 ISR_f_CM3_AC_sync 立起**
+        while (!ISR_f_CM3_AC_sync);
+        ISR_f_CM3_AC_sync = 0;  // **清除標誌**
         
         // **計算經過的 ticks**
         elapsed_ticks = system_ticks - start_tick;
@@ -2313,8 +2480,14 @@ void Detect_AC_Frequency(void) {
     }
     sum /= AC_FREQUENCY_SAMPLES;
 
-    // **判斷 AC 頻率 (50Hz / 60Hz)**
-    f_AC_50Hz = (sum >= AC_60HZ_THRESHOLD) ? 1 : 0;
+    // === Determine AC Frequency (50Hz / 60Hz) ===
+    #if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
+        f_AC_50Hz = 1;
+    #elif AC_FREQ_MODE == AC_FREQ_MODE_FORCE_60HZ
+        f_AC_50Hz = 0;
+    #else
+        f_AC_50Hz = (sum >= AC_60HZ_THRESHOLD) ? 1 : 0;
+    #endif
     
     measure_per_AC_cycle = (f_AC_50Hz) ? MEASUREMENTS_PER_50HZ : MEASUREMENTS_PER_60HZ;
     
@@ -2325,6 +2498,7 @@ void Detect_AC_Frequency(void) {
 #define ERROR_RECOVERY_TIME_S  2  // Time required for error recovery (seconds)
 
 ErrorFlags error_flags = {0};
+WarningFlags warning_flags = {0};
 volatile uint8_t Surge_Overvoltage_Flag = 0;
 volatile uint8_t Surge_Overcurrent_Flag = 0;
 
@@ -2334,7 +2508,7 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if (Surge_Overvoltage_Flag || Surge_Overvoltage_Flag || error_flags.all_flags) {
+    if (Surge_Overvoltage_Flag || Surge_Overcurrent_Flag || error_flags.all_flags) {
       system_state = ERROR;
       
       error_clear_time_1s = system_time_1s;  // Record the current time
@@ -2344,18 +2518,19 @@ void Error_Process(void)
       
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
-      //pot_analyze_state = PWR_UP; //HCW**Cancel the pot analysis process.
+      //pot_analyze_state = PWR_UP; // HCW**Cancel the pot analysis process.
       
       // Set I2C status code based on error type
-      if (Surge_Overvoltage_Flag)
-        i2c_status_code = I2C_STATUS_OVERVOLTAGE;
-      else if (Surge_Overcurrent_Flag)
-        i2c_status_code = I2C_STATUS_OVERCURRENT;
-      else
-        i2c_status_code = I2C_STATUS_OTHER_ERROR;
-      
-      
-      P10 = ~P10 ;//HCW**
+      // Set I2C status code based on error type
+      if (Surge_Overvoltage_Flag) {
+          i2c_status_code = I2C_STATUS_OVERVOLTAGE;
+      } else if (Surge_Overcurrent_Flag) {
+          i2c_status_code = I2C_STATUS_OVERCURRENT;
+      } else if (error_flags.f.IGBT_overheat) {
+          i2c_status_code = I2C_STATUS_IGBT_OVERHEAT;
+      } else {
+          i2c_status_code = I2C_STATUS_OTHER_ERROR;
+      }
     }
     return;
   }
@@ -2419,10 +2594,10 @@ void Error_Process(void)
 #define TEMP_ACCUMULATE_COUNT 8
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-uint16_t IGBT_TEMP_code = 0;        // 目前IGBT溫度 AD_code
-uint16_t TOP_TEMP_code = 0;         // 目前表面溫度 AD_code
-int IGBT_TEMP_C = 0;                // 目前IGBT溫度 度C
-int TOP_TEMP_C = 0;                 // 目前表面溫度 AD_code
+uint16_t idata IGBT_TEMP_code = 0;        // 目前IGBT溫度 AD_code
+uint16_t idata TOP_TEMP_code = 0;         // 目前表面溫度 AD_code
+int idata IGBT_TEMP_C = 0;                // 目前IGBT溫度 度C
+int idata TOP_TEMP_C = 0;                 // 目前表面溫度 度C
 static bit f_temp_updated = 0;      // 溫度變數更新旗標
 
 /**
@@ -2484,9 +2659,9 @@ const int code TOP_NTC_table[129] = {
 void Temp_Measure(void)
 {
   uint16_t temp_raw;
-  static uint16_t IGBT_TEMP_sum = 0;      // 累加 IGBT 溫度的變數
-  static uint16_t TOP_TEMP_sum = 0;       // 累加表面溫度的變數
-  static uint8_t Temp_Measure_cnt = 0;    // 量測次數計數器  
+  static uint16_t idata IGBT_TEMP_sum = 0;      // 累加 IGBT 溫度的變數
+  static uint16_t idata TOP_TEMP_sum = 0;       // 累加表面溫度的變數
+  static uint8_t idata Temp_Measure_cnt = 0;    // 量測次數計數器  
   
   // 呼叫通用 ADC 量測函式，量測 IGBT 溫度
   ADC_measure_4_avg(IGBT_TEMP_ADC_CHANNEL, &temp_raw);
@@ -2519,12 +2694,16 @@ void Temp_Measure(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 定義 IGBT 溫度上下限
-#define IGBT_TEMP_UPPER_LIMIT  60   // IGBT 溫度上限 (攝氏度)60
+// IGBT temperature error threshold
+#define IGBT_TEMP_UPPER_LIMIT  70   // IGBT 溫度上限 (攝氏度) 70
+#define IGBT_TEMP_RECOVERY     60   // IGBT Overheat recovery threshold 60
 #define IGBT_TEMP_LOWER_LIMIT -20   // IGBT 溫度下限 (攝氏度)
-#define IGBT_TEMP_RECOVERY     40   // IGBT Overheat release temperature 40
 
-// 定義 TOP 溫度上下限
+// Warning temperature threshold before reaching overheat
+#define IGBT_TEMP_WARNING_LIMIT      60    // Start of heat warning zone
+#define IGBT_TEMP_WARNING_RECOVERY   55    // Heat warning recovery threshold
+
+// IGBT temperature error threshold
 #define TOP_TEMP_UPPER_LIMIT  180   // TOP 溫度上限 (單位：適當的測量單位，例如攝氏度)
 #define TOP_TEMP_LOWER_LIMIT  -20   // TOP 溫度下限 (單位：適當的測量單位，例如攝氏度)
 #define TOP_TEMP_RECOVERY     100   // TOP Overheat release temperature
@@ -2548,17 +2727,25 @@ void Temp_Process(void)
     /* Interpolate between both points. */
     IGBT_TEMP_C = p1 - (((p1-p2)*(IGBT_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
     
-    // 檢查溫度是否異常 IGBT_Temp_Process
+    // Overheat protection
     if (IGBT_TEMP_C > IGBT_TEMP_UPPER_LIMIT) {
       error_flags.f.IGBT_overheat = 1;
     } else if (IGBT_TEMP_C < IGBT_TEMP_RECOVERY) {
       error_flags.f.IGBT_overheat = 0;
     }
 
+    // Sensor fault detection
     if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
       error_flags.f.IGBT_sensor_fault = 1;
     } else {
       error_flags.f.IGBT_sensor_fault = 0;
+    }
+    
+    // Heat warning zone
+    if (IGBT_TEMP_C > IGBT_TEMP_WARNING_LIMIT) {
+      warning_flags.f.IGBT_heat_warning = 1;
+    } else if (IGBT_TEMP_C < IGBT_TEMP_WARNING_RECOVERY) {
+      warning_flags.f.IGBT_heat_warning = 0;
     }
     
     // TOP temperature process

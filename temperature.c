@@ -18,10 +18,10 @@
 #define TEMP_ACCUMULATE_COUNT 8
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-uint16_t IGBT_TEMP_code = 0;        // 目前IGBT溫度 AD_code
-uint16_t TOP_TEMP_code = 0;         // 目前表面溫度 AD_code
-int IGBT_TEMP_C = 0;                // 目前IGBT溫度 度C
-int TOP_TEMP_C = 0;                 // 目前表面溫度 AD_code
+uint16_t idata IGBT_TEMP_code = 0;        // 目前IGBT溫度 AD_code
+uint16_t idata TOP_TEMP_code = 0;         // 目前表面溫度 AD_code
+int idata IGBT_TEMP_C = 0;                // 目前IGBT溫度 度C
+int idata TOP_TEMP_C = 0;                 // 目前表面溫度 度C
 static bit f_temp_updated = 0;      // 溫度變數更新旗標
 
 /**
@@ -83,9 +83,9 @@ const int code TOP_NTC_table[129] = {
 void Temp_Measure(void)
 {
   uint16_t temp_raw;
-  static uint16_t IGBT_TEMP_sum = 0;      // 累加 IGBT 溫度的變數
-  static uint16_t TOP_TEMP_sum = 0;       // 累加表面溫度的變數
-  static uint8_t Temp_Measure_cnt = 0;    // 量測次數計數器  
+  static uint16_t idata IGBT_TEMP_sum = 0;      // 累加 IGBT 溫度的變數
+  static uint16_t idata TOP_TEMP_sum = 0;       // 累加表面溫度的變數
+  static uint8_t idata Temp_Measure_cnt = 0;    // 量測次數計數器  
   
   // 呼叫通用 ADC 量測函式，量測 IGBT 溫度
   ADC_measure_4_avg(IGBT_TEMP_ADC_CHANNEL, &temp_raw);

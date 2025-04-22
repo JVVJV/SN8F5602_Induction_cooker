@@ -115,6 +115,8 @@ extern bit f_pot_detected;
 extern bit f_AC_50Hz; // **AC ÀW²v¼Ð»x¡A1 = 50Hz¡A0 = 60Hz**
 extern uint8_t measure_per_AC_cycle;
 
+extern bit f_block_occurred;
+
 extern PotDetectionState pot_detection_state;
 extern PotAnalyzeState pot_analyze_state;
 

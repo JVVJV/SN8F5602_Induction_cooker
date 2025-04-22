@@ -7,8 +7,8 @@
 /*_____ D E F I N I T I O N S ______________________________________________*/
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern int IGBT_TEMP_C;      // 目前IGBT溫度
-extern int TOP_TEMP_C;       // 目前表面溫度
+extern int idata IGBT_TEMP_C;      // 目前IGBT溫度
+extern int idata TOP_TEMP_C;       // 目前表面溫度
 
 /*_____ M A C R O S ________________________________________________________*/
 

@@ -86,8 +86,10 @@ void main (void)
 //  power_setting = 800000;
   #endif
   
-  // f_125us reset to zero
+  // Reset timing-related flags used for scheduling or synchronization
   f_125us = 0;
+  ISR_f_CM3_AC_Zero_sync = 0;
+  ISR_f_CM3_AC_sync = 0;   // HCW** need to bo modify.
   
   // 進入主程式循環
   while (1) {
@@ -101,10 +103,13 @@ void main (void)
       // 更新系統時間
       Update_System_Time();  
       
-      // 獨立執行任務
+      // 固定任務
       Power_read();
-          
-      // 任務循環
+      
+      Zero_Crossing_Task();
+      Frequency_jitter();
+       
+      // 次任務循環
       switch (current_task) {
         case TASK_HEAT_CONTROL:
             Heat_Control();
@@ -169,6 +174,7 @@ void Warmup_Delay(void)
       f_125us = 0;
       cnt++;
     }
-  }
-  
+  }  
 }
+
+

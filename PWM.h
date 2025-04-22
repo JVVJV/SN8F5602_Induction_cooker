@@ -38,16 +38,21 @@
 
 // IEN3
 #define mskEPW0         (1<<2)
-
-
+// IRCON3
+#define mskPW0F         (1<<2)
 
 
 
 /*_____ M A C R O S ________________________________________________________*/
 #define PWM_INTERRUPT_ENABLE    IEN3 |= mskEPW0;
 #define PWM_INTERRUPT_DISABLE   IEN3 &= ~mskEPW0;
+#define PW0F_CLEAR              IRCON3 &= ~mskPW0F;
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void PWM_Init(void);
+
+
+extern volatile uint16_t PW0D_val_ISR;
+extern volatile uint16_t PW0D_val_main;
 
 #endif  // __PWM_H__

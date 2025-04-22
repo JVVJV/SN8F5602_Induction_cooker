@@ -38,6 +38,7 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit f_i2c_power_received;   // **功率接收完成標誌**
+
 /*_____ M A C R O S ________________________________________________________*/
 #define I2C_PIN_SET_INPUT_0     P0M &= ~((0x01U<<6)|(0x01U<<7));  //SCL = P06,SDA = P07.
 #define I2C_PIN_SET_INPUT_1     P1M &= ~((0x01U<<3)|(0x01U<<4));	//SCL = P13,SDA = P14.
