@@ -41,7 +41,7 @@ void PWM_Init(void)
 /**
  * PWM0_ISR handles:
  * - Slowdown ramping during periodic heating
- * - High-voltage PW0D adjustment request from CMP2 (via ISR_f_CMP2_PW0D_request)
+ * - High-voltage PW0D adjustment request from CMP2 (via PW0D_req_CMP2_isr )
  * - Frequency jitter logic for EMI reduction
  *
  * Handle CMP2 PW0D adjustment request.
@@ -55,6 +55,13 @@ void PWM_Init(void)
 
 void PWM0_ISR(void) interrupt ISRPwm0
 {
+  int tmp;
+  
+  if(PW0D_lock)
+  {
+    return;
+  }
+  
   // IGBT_C_slowdown ramp-up
   if ((system_state == PERIODIC_HEATING) &&
       (periodic_heat_state == PERIODIC_SLOWDOWN_PHASE)) 
@@ -64,13 +71,15 @@ void PWM0_ISR(void) interrupt ISRPwm0
     } else {
         PW0D = SLOWDOWN_PWM_MAX_WIDTH;
     }
+    
+    return;
   }
 
   // In heating logic
   if (f_heating_initialized) {
     // IGBT_High-voltage protection (decrease PW0D)
-    if (ISR_f_CMP2_PW0D_request ) {
-      ISR_f_CMP2_PW0D_request = 0;
+    if (PW0D_req_CMP2_isr) {
+      PW0D_req_CMP2_isr = FALSE;
 
       if ((PW0D >= (3 + PWM_MIN_WIDTH))) {
         PW0D -= 3;
@@ -78,7 +87,27 @@ void PWM0_ISR(void) interrupt ISRPwm0
         PW0D = PWM_MIN_WIDTH;
       }
       
-      return; // Early exit to avoid simultaneous jitter handling
+      if (!f_jitter_active) 
+      {PWM_INTERRUPT_DISABLE; }
+      
+      return;
+    }
+    
+    // Power_Control request (กำ1)
+    if (PW0D_delta_req_pwr_ctrl) {
+      tmp = (int)PW0D + PW0D_delta_req_pwr_ctrl;
+      
+      if (tmp < PWM_MIN_WIDTH)      tmp = PWM_MIN_WIDTH;
+      else if (tmp > PWM_MAX_WIDTH) tmp = PWM_MAX_WIDTH;
+      
+      PW0D = (uint16_t)tmp;
+      
+      PW0D_delta_req_pwr_ctrl = 0;
+      
+      if (!f_jitter_active) 
+      {PWM_INTERRUPT_DISABLE; }
+      
+      return;
     }
     
     // Frequency jitter control
@@ -91,6 +120,7 @@ void PWM0_ISR(void) interrupt ISRPwm0
           PW0D++;
       }
     }
+    
   }
   
 }

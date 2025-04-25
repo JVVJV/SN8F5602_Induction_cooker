@@ -70,7 +70,7 @@ void Power_read(void)
   // Calculate power when reaching a full AC cycle
   if (pwr_read_cnt >= measure_per_AC_cycle)
   {
-    if(f_AC_50Hz){
+    #if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
       //voltage_RMS_V = voltage_adc_sum/MEASUREMENTS_PER_50HZ(160)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
       //"0.0163" comes from voltage divider calculation.
       //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
@@ -78,7 +78,8 @@ void Power_read(void)
       
       //current_adc_avg = current_adc_sum/MEASUREMENTS_PER_50HZ(160);  // (->avg)
       current_adc_avg = (current_adc_sum * 3277) >> 19;
-    }else{
+    
+    #elif AC_FREQ_MODE == AC_FREQ_MODE_FORCE_60HZ
       //voltage_RMS_V = voltage_adc_sum/MEASUREMENTS_PER_60HZ(133)/4096*5*(1/0.0163)*1.11; // V (->avg->RMS)
       //"0.0163" comes from voltage divider calculation.
       //For a full-wave rectified sine wave, Form Factor(K) = 1.11, meaning Vrms is 1.11*Vavg .
@@ -86,7 +87,7 @@ void Power_read(void)
       
       //current_adc_avg = current_adc_sum/MEASUREMENTS_PER_60HZ(133); // (->avg)
       current_adc_avg = (current_adc_sum * 1971) >> 18;
-    }
+    #endif
     
     // Remove current_base
     if(current_adc_avg > current_base){
@@ -322,6 +323,8 @@ void stop_heating(void)
   
   CM0M &= ~mskCM0SF;        // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
   
+  PWM_Request_Reset();
+  
   f_pot_detected = 0;       // 重置鍋具檢測標誌
   f_heating_initialized = 0;
 }
@@ -474,7 +477,10 @@ void Periodic_Power_Control(void) {
         periodic_AC_sync_cnt = 0;
         
         // Backup PW0D before IGBT_C_slowdown
+        PW0D_lock = 1;
         PW0D_backup = PW0D;
+        PW0D_lock = 0;
+        
         IGBT_C_slowdown();
         phase_start_tick = system_ticks;
         periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
@@ -487,7 +493,9 @@ void Periodic_Power_Control(void) {
         pause_heating();    // Stop IGBT_C_slowdown PWM
         
         // Restore PW0D after IGBT_C_slowdown
+        PW0D_lock = 1;
         PW0D = PW0D_backup;
+        PW0D_lock = 0;
         
         init_heating(HEATING_IMMEDIATE, f_periodic_pulse_init ? PULSE_WIDTH_PERIODIC_START : PULSE_WIDTH_NO_CHANGE);
         f_periodic_pulse_init = 0;
@@ -585,8 +593,8 @@ void IGBT_C_slowdown(void) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Zero crossing trigger ticks (1 tick = 125us)
-#define ZERO_CROSS_TRIGGER_TICKS_50HZ   15  // 1.875ms
-#define ZERO_CROSS_TRIGGER_TICKS_60HZ   13  // 1.625ms
+#define ZERO_CROSS_TRIGGER_TICKS_50HZ   14  // 1.750ms
+#define ZERO_CROSS_TRIGGER_TICKS_60HZ   12  // 1.500ms
 
 #if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
   #define ZERO_CROSS_TRIGGER_TICKS ZERO_CROSS_TRIGGER_TICKS_50HZ
@@ -624,17 +632,14 @@ void Zero_Crossing_Task(void)
 
   real_zero_cross_timer++;
 
-#if AC_FREQ_MODE == AC_FREQ_MODE_AUTO
-  // Runtime decision based on measured AC frequency
-  if (real_zero_cross_timer >= (f_AC_50Hz ? ZERO_CROSS_TRIGGER_TICKS_50HZ : ZERO_CROSS_TRIGGER_TICKS_60HZ)) {
-#else
-  // Compile-time fixed tick threshold
-  if (real_zero_cross_timer >= ZERO_CROSS_TRIGGER_TICKS) {
-#endif
-      
+//  // Runtime decision based on measured AC frequency
+//  if (real_zero_cross_timer >= (f_AC_50Hz ? ZERO_CROSS_TRIGGER_TICKS_50HZ : ZERO_CROSS_TRIGGER_TICKS_60HZ)) {
+
+  if (real_zero_cross_timer >= ZERO_CROSS_TRIGGER_TICKS) {    
     f_zero_cross_task_active = 0;
     real_zero_cross_timer = 0;
 
+    // real_zero task
     Start_Frequency_jitter();  // Execute zero-cross triggered function(s)
   }
 }
@@ -667,15 +672,23 @@ void Zero_Crossing_Task(void)
  */
 
 // JITTER_HOLD duration (unit: 125us ticks)
-#define JITTER_HOLD_TICKS_50HZ     22  // 2.750ms
-#define JITTER_HOLD_TICKS_60HZ     19  // 2.375ms
-
+#define JITTER_HOLD_TICKS_50HZ     24  // 3ms
 #define JITTER_DEC_TICKS_50HZ      16  // 2ms
-#define JITTER_DEC_TICKS_60HZ      12  // 1.5ms
-
 #define JITTER_INC_TICKS_50HZ      16  // 2ms
+
+#define JITTER_HOLD_TICKS_60HZ     21  // 2.625ms
+#define JITTER_DEC_TICKS_60HZ      12  // 1.5ms
 #define JITTER_INC_TICKS_60HZ      12  // 1.5ms
 
+#if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
+  #define JITTER_HOLD_TICKS  JITTER_HOLD_TICKS_50HZ
+  #define JITTER_DEC_TICKS   JITTER_DEC_TICKS_50HZ
+  #define JITTER_INC_TICKS   JITTER_INC_TICKS_50HZ
+#elif AC_FREQ_MODE == AC_FREQ_MODE_FORCE_60HZ
+  #define JITTER_HOLD_TICKS  JITTER_HOLD_TICKS_60HZ
+  #define JITTER_DEC_TICKS   JITTER_DEC_TICKS_60HZ
+  #define JITTER_INC_TICKS   JITTER_INC_TICKS_60HZ
+#endif
 
 static bit f_jitter_in_progress  = 0;     // 抖頻啟動旗標
 bit f_jitter_active = 0;     // 抖頻啟動旗標
@@ -703,14 +716,7 @@ void Frequency_jitter(void)
   switch (Frequency_jitter_state)
   {
     case JITTER_HOLD:
-        if (elapsed >= (f_AC_50Hz ? JITTER_HOLD_TICKS_50HZ : JITTER_HOLD_TICKS_60HZ)) {
-            Frequency_jitter_state = JITTER_HOLD_GAP;
-            jitter_state_start_tick = system_ticks;
-        }
-        break;
-        
-    case JITTER_HOLD_GAP:
-        if (elapsed >= 2) {
+        if (elapsed >= JITTER_HOLD_TICKS) {
             f_jitter_active = 1;
             Frequency_jitter_state = JITTER_DECREASE;
             jitter_state_start_tick = system_ticks;
@@ -720,26 +726,23 @@ void Frequency_jitter(void)
         break;
 
     case JITTER_DECREASE:
-        if (elapsed >= (f_AC_50Hz ? JITTER_DEC_TICKS_50HZ : JITTER_DEC_TICKS_60HZ)) {
+        if (elapsed >= JITTER_DEC_TICKS) {
             Frequency_jitter_state = JITTER_INCREASE;
             jitter_state_start_tick = system_ticks;
         }
         break;
 
     case JITTER_INCREASE:
-        if (elapsed >= (f_AC_50Hz ? JITTER_INC_TICKS_50HZ : JITTER_INC_TICKS_60HZ)) {
-            Frequency_jitter_state = JITTER_INCREASE_GAP;
-            jitter_state_start_tick = system_ticks;
+        if (elapsed >= JITTER_INC_TICKS) {
             PWM_INTERRUPT_DISABLE;
+            f_jitter_active = 0;
+            f_jitter_in_progress = 0;
+            Frequency_jitter_state = JITTER_HOLD;
+            jitter_state_start_tick = system_ticks;
         }
         break;
         
-    case JITTER_INCREASE_GAP:
-        if (elapsed >= 2) {
-            Frequency_jitter_state = JITTER_HOLD;
-            f_jitter_in_progress = 0;
-            f_jitter_active = 0;
-        }
+    default:
         break;
   }
 }

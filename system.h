@@ -7,6 +7,9 @@
 
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
+#define TRUE          1
+#define FALSE         0
+
 // CLKSEL
 #define SYS_CLK_DIV1    (0<<0)
 #define SYS_CLK_DIV2    (1<<0)
@@ -111,6 +114,9 @@ extern uint16_t current_base;  // 存儲基準電流 ADC 值
 extern uint16_t recorded_1000W_PW0D;
 extern uint8_t ac_half_low_ticks_avg;
 
+extern volatile char PW0D_delta_req_pwr_ctrl;
+extern volatile uint8_t PW0D_lock;
+
 extern bit f_pot_detected;
 extern bit f_AC_50Hz; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**
 extern uint8_t measure_per_AC_cycle;
@@ -141,6 +147,7 @@ void Heat_Control(void);
 void pause_heating(void);
 void Periodic_Power_Control(void);
 void Power_Control(void);
+void PWM_Request_Reset(void);
 void Pot_Detection(void);
 void Pot_Analyze(void);
 void Pot_Detection_In_Heating(void);

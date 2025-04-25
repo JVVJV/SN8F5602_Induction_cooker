@@ -295,6 +295,8 @@ void I2C_Communication(void);
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
+extern volatile uint8_t ISR_f_CMP2_PW0D_request;
+
 extern volatile uint8_t ISR_f_CM3_AC_sync;
 extern volatile uint8_t ISR_f_CM3_AC_Zero_sync;
 extern volatile uint8_t CM3_AC_sync_cnt;
@@ -371,7 +373,7 @@ void Surge_Protection_Modify(void);
 //#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
 //#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
 //#define PWM_MAX_WIDTH           417         // PWM 最大寬度   417cnt @32MHz = 13us
-//#define PWM_MAX_WIDTH           320         // PWM 最大寬度   320cnt @32MHz = 10us //HCW**
+//#define PWM_MAX_WIDTH           320         // PWM 最大寬度   320cnt @32MHz = 10us
 //#define PWM_MAX_WIDTH           256         // PWM 最大寬度   250cnt @32MHz = 8us
 
 
@@ -548,10 +550,13 @@ typedef enum {
 } PulseWidthSelect;
 
 typedef enum {
-    SHAKE_HOLD,
-    SHAKE_DECREASE,
-    SHAKE_INCREASE
-} FrequencyShakeState;
+    JITTER_HOLD,            // Initial idle state before jitter starts
+    JITTER_HOLD_GAP,        // Delay (2 ticks) before enabling PWM interrupt
+    JITTER_DECREASE,        // Frequency jitter decreasing phase, PWM0_ISR will decrement PW0D
+    JITTER_INCREASE,        // Frequency jitter increasing phase, PWM0_ISR will increment PW0D
+    JITTER_INCREASE_GAP     // Delay (2 ticks) after disabling PWM interrupt before finishing
+} FrequencyJitterState;
+
 
 #define SLOWDOWN_PWM_START_WIDTH  20    // 312.5ns / 31.25ns = 10 clks
 #define SLOWDOWN_PWM_MAX_WIDTH    42    // 1.5us / 31.25ns = 48 clks
@@ -571,6 +576,8 @@ extern bit f_power_updated;
 extern uint8_t level;
 extern uint8_t periodic_AC_sync_cnt;
 extern PeriodicHeatState periodic_heat_state;
+extern FrequencyJitterState Frequency_jitter_state;
+extern bit f_jitter_active;
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -581,7 +588,7 @@ void reset_power_read_data(void);
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select);
 void stop_heating(void);
 void Zero_Crossing_Task(void);
-void Frequency_shake(void);
+void Frequency_jitter(void);
 
 #endif  // __POWER_H__
 
@@ -629,17 +636,22 @@ void Frequency_shake(void);
 
 // IEN3
 #define mskEPW0         (1<<2)
-
-
+// IRCON3
+#define mskPW0F         (1<<2)
 
 
 
 /*_____ M A C R O S ________________________________________________________*/
 #define PWM_INTERRUPT_ENABLE    IEN3 |= mskEPW0;
 #define PWM_INTERRUPT_DISABLE   IEN3 &= ~mskEPW0;
+#define PW0F_CLEAR              IRCON3 &= ~mskPW0F;
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void PWM_Init(void);
+
+
+extern volatile uint16_t PW0D_val_ISR;
+extern volatile uint16_t PW0D_val_main;
 
 #endif  // __PWM_H__
 

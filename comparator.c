@@ -58,7 +58,7 @@ void Comparator_Init(void)
   // INTERNAL 3.5V*37/64 = 2.023V-> CM1RS = 37
   CM1REF = CM1REF_INTREF | 37;
   
-  CMDB1 = CM1_DEBOUNCE_8FCPU; // 0.5us
+  CMDB1 = CM1_DEBOUNCE_10FCPU; // 0.625us
   
   CM1M = mskCM1EN | mskCM1SF |CM1_FALLING_TRIGGER;
   
@@ -81,8 +81,7 @@ void Comparator_Init(void)
   //CM2REF = CM2REF_INTREF | 50;  //900V
   
   CM2M = mskCM2EN |CM2_FALLING_TRIGGER; // Disable CM2SF HCW**
-  
-  
+ 
   IEN2 |= mskECMP2;
   
   // CM3 -------------------------------------------------------
@@ -133,6 +132,8 @@ void Comparator_Init(void)
   // VDD 5V*61/64 = 4.8V -> CM4RS = 61 
   //CM4REF = CM4REF_VDD | 61; 
   
+  CMDB4 = CM4_DEBOUNCE_8FCPU; // 0.5us
+  
   CM4M = mskCM4SF | CM4_FALLING_TRIGGER | CM4N_OPO;
   
   IEN2 |= mskECMP4;
@@ -149,7 +150,6 @@ void Surge_Protection_Modify(void)
   // Enable CM4
   CM4M |= mskCM4EN;
 }
-
 
 
 void comparator0_ISR(void) interrupt ISRCmp0
@@ -177,16 +177,14 @@ void comparator1_ISR(void) interrupt ISRCmp1
 // Do NOT modify PW0D directly here to avoid race conditions with main/PWM0_ISR. (IC_BUG)
 // The actual PW0D adjustment will be handled safely by either PWM0_ISR or Power_Control().
 
-volatile uint8_t ISR_f_CMP2_PW0D_request = 0;
+volatile uint8_t PW0D_req_CMP2_isr  = 0;
 
 void comparator2_ISR(void) interrupt ISRCmp2
 {  
   // Only allow PW0D decrease for CMP2 HV protection when f_heating_initialized = 1,
   // Prevents wrong PW0D update during IGBT_C_SLOWDOWN or other PWM states.
   if (f_heating_initialized) {
-    // Set CMP2 PW0D adjustment request flag
-    ISR_f_CMP2_PW0D_request = 1;
-
+    PW0D_req_CMP2_isr = TRUE;   // mark CMP2 request
     PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
   }

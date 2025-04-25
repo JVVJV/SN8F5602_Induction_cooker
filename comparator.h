@@ -131,6 +131,24 @@
 #define CM4_RISING_TRIGGER    (1<<3)
 #define CM4_FALLING_TRIGGER   (0<<3)
 
+// CMDB4
+#define CM4_DEBOUNCE_0FCPU      (0<<0)
+#define CM4_DEBOUNCE_2FCPU      (1<<0)
+#define CM4_DEBOUNCE_4FCPU      (2<<0)
+#define CM4_DEBOUNCE_6FCPU      (3<<0)
+#define CM4_DEBOUNCE_8FCPU      (4<<0)
+#define CM4_DEBOUNCE_10FCPU     (5<<0)
+#define CM4_DEBOUNCE_12FCPU     (6<<0)
+#define CM4_DEBOUNCE_14FCPU     (7<<0)
+#define CM4_DEBOUNCE_16FCPU     (8<<0)
+#define CM4_DEBOUNCE_18FCPU     (9<<0)
+#define CM4_DEBOUNCE_20FCPU     (10<<0)
+#define CM4_DEBOUNCE_22FCPU     (11<<0)
+#define CM4_DEBOUNCE_24FCPU     (12<<0)
+#define CM4_DEBOUNCE_26FCPU     (13<<0)
+#define CM4_DEBOUNCE_28FCPU     (14<<0)
+#define CM4_DEBOUNCE_30FCPU     (15<<0)
+
 // CM4REF
 #define CM4REF_VDD      (0<<7)
 #define CM4REF_INTREF   (1<<7)
@@ -164,7 +182,7 @@
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile uint8_t ISR_f_CMP2_PW0D_request;
+extern volatile uint8_t PW0D_req_CMP2_isr ;
 
 extern volatile uint8_t ISR_f_CM3_AC_sync;
 extern volatile uint8_t ISR_f_CM3_AC_Zero_sync;

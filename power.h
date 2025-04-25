@@ -22,10 +22,8 @@ typedef enum {
 
 typedef enum {
     JITTER_HOLD,            // Initial idle state before jitter starts
-    JITTER_HOLD_GAP,        // Delay (2 ticks) before enabling PWM interrupt
     JITTER_DECREASE,        // Frequency jitter decreasing phase, PWM0_ISR will decrement PW0D
     JITTER_INCREASE,        // Frequency jitter increasing phase, PWM0_ISR will increment PW0D
-    JITTER_INCREASE_GAP     // Delay (2 ticks) after disabling PWM interrupt before finishing
 } FrequencyJitterState;
 
 

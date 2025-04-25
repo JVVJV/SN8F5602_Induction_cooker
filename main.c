@@ -50,7 +50,8 @@ void Warmup_Delay(void);
 *****************************************************************************/
 void main (void)
 {
-  //DEGCMD = 0x00; // Disable SWAT pin
+  DEGCMD = 0x00; // Disable SWAT pin
+  
   #if TUNE_MODE == 1
   OPM = 0x01;
   OPCAL -= 6; 

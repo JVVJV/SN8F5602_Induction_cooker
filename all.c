@@ -72,9 +72,9 @@ void ADC_measure_4_avg(uint8_t channel, uint16_t *result) {
 //        }
 //        sum += samples[i];
 //    }
+//    // 去掉最大值與最小值，計算中間兩次的平均值
+//    sum = sum - max_value - min_value;
     
-    // 去掉最大值與最小值，計算中間兩次的平均值
-    //sum = sum - max_value - min_value;
     *result = sum / 4;  // 回傳結果到指定變數位址
 }
 
@@ -230,8 +230,6 @@ void Comparator_Init(void)
   
   CM0M |= mskCM0EN;
   
-  //CM0_IRQ_ENABLE; //HCW** for experiment
-  
   // INTERNAL REFERENCE VOLTAGE -------------------------------------------------------
   INTREF = mskINTREFEN | INTREF3V5;
   
@@ -269,13 +267,14 @@ void Comparator_Init(void)
   // CM2P
   // 1050V*2.5K/827.5K = 3.1722V
   // INTERNAL 3.5V*58/64 = 3.1718V -> CM2RS = 58 
-  CM2REF = CM2REF_INTREF | 58; 
+  CM2REF = CM2REF_INTREF | 58;    //1050V
   
   //CM2REF = CM2REF_INTREF | 38;  //700V
+  //CM2REF = CM2REF_INTREF | 44;  //800V
   //CM2REF = CM2REF_INTREF | 50;  //900V
   
+  CM2M = mskCM2EN |CM2_FALLING_TRIGGER; // Disable CM2SF HCW**
   
-  CM2M = mskCM2EN | mskCM2SF |CM2_FALLING_TRIGGER;
   
   IEN2 |= mskECMP2;
   
@@ -366,17 +365,23 @@ void comparator1_ISR(void) interrupt ISRCmp1
   PWM_INTERRUPT_DISABLE;
 }
 
+
+// Raise CMP2 PW0D adjustment request flag.
+// Do NOT modify PW0D directly here to avoid race conditions with main/PWM0_ISR. (IC_BUG)
+// The actual PW0D adjustment will be handled safely by either PWM0_ISR or Power_Control().
+
+volatile uint8_t ISR_f_CMP2_PW0D_request = 0;
+
 void comparator2_ISR(void) interrupt ISRCmp2
 {  
-  // Only allow PW0D decrease for CMP2 HV protection when f_heating_initialized == 1,
+  // Only allow PW0D decrease for CMP2 HV protection when f_heating_initialized = 1,
   // Prevents wrong PW0D update during IGBT_C_SLOWDOWN or other PWM states.
   if (f_heating_initialized) {
-    // Patch for CM2SF can't be triggered by edge.
-    if ((PW0D >= (3 + PWM_MIN_WIDTH))) { // 確保不小於最小值
-        PW0D -= 1;
-    } else {
-        PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
-    }  
+    // Set CMP2 PW0D adjustment request flag
+    ISR_f_CMP2_PW0D_request = 1;
+
+    PW0F_CLEAR;
+    PWM_INTERRUPT_ENABLE;
   }
 }
 
@@ -954,9 +959,8 @@ void main (void)
       Power_read();
       
       Zero_Crossing_Task();
-      Frequency_shake(); 
-      
-      
+      Frequency_jitter();
+       
       // 次任務循環
       switch (current_task) {
         case TASK_HEAT_CONTROL:
@@ -1115,7 +1119,7 @@ void pause_heating(void);
 void IGBT_C_slowdown(void);
 void shutdown_process(void);
 void finalize_shutdown(void);
-void Start_Frequency_Shake(void);
+void Start_Frequency_jitter(void);
 
 uint16_t current_lookup_interpolation(uint16_t adc_val);
 
@@ -1234,7 +1238,7 @@ typedef struct {
 } LookupEntry;
 
 #define TABLE_SIZE 9
-// ADC_Code(base)
+
 const LookupEntry code lookupTable[TABLE_SIZE] = {
     {0,    6},
     {500,    1813},
@@ -1292,7 +1296,6 @@ uint16_t current_lookup_interpolation(uint16_t adc_val)
 #define BASE_CURRENT_LOWER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 - BASE_CURRENT_TOLERANCE)) / 100)
 #define BASE_CURRENT_UPPER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 + BASE_CURRENT_TOLERANCE)) / 100)
 
-
 uint16_t current_base = 0;
 
 void Measure_Base_Current(void) {
@@ -1327,7 +1330,7 @@ void Quick_Change_Detect() {
   // 前一次的測量值
 //  static uint16_t last_voltage = 0;     // 上次測量的電壓值
 //  static uint16_t last_current = 0;     // 上次測量的電流值  
-  
+
     // === 過壓檢查與回復 ===
     if (error_flags.f.Over_voltage) {
         if (voltage_RMS_V < VOLTAGE_RECOVER_HIGH) {
@@ -1416,6 +1419,7 @@ void shutdown_process(void)
     stop_heating();
     //save_system_state();
 }
+
 void finalize_shutdown(void)
 {
   _nop_(); //HCW**
@@ -1431,7 +1435,7 @@ typedef struct {
 const PeriodicConfig code Periodic_table[] = {
     {8, 2}, // level 0: 加熱 8 週期，休息 2 週期（對應 800000mW）
     {5, 5}, // level 1: 加熱 5 週期，休息 5 週期（對應 500000mW）
-    {4, 16}  // level 2: 加熱 2 週期，休息 8 週期（對應 200000mW）
+    {4, 16}  // level 2: 加熱 4 週期，休息 16 週期（對應 200000mW）
 };
 
 void Heat_Control(void)
@@ -1452,8 +1456,7 @@ void Heat_Control(void)
 
   // 檢查鍋具狀態
   if (f_pot_detected == 0) {
-    // 啟動Fan
-    BUZZER_ENABLE;
+    BUZZER_ENABLE; // ENABLE Fan or Buzzer
     
     Pot_Detection(); // 執行鍋具檢測邏輯
     return;
@@ -1502,7 +1505,6 @@ void Heat_Control(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
 uint8_t periodic_AC_sync_cnt = 0;
 bit f_power_measure_valid  = 0;  // **Flag to indicate current measurement stabilization**
@@ -1636,7 +1638,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  // Enable PWM
   
-//  // Start a 16ms countdown
+//  // Start a 16ms countdown, not use now.
 //  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 
   
   reset_power_read_data();
@@ -1651,7 +1653,8 @@ void IGBT_C_slowdown(void) {
   
     PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**
     PW0D = SLOWDOWN_PWM_START_WIDTH;    // **設定 PWM 脈衝寬度**
-
+    
+    PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
   
     // **開啟 PWM**
@@ -1710,78 +1713,120 @@ void Zero_Crossing_Task(void)
     f_zero_cross_task_active = 0;
     real_zero_cross_timer = 0;
 
-    Start_Frequency_Shake();  // Execute zero-cross triggered function(s)
+    Start_Frequency_jitter();  // Execute zero-cross triggered function(s)
   }
 }
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// SHAKE_HOLD duration (unit: 125us ticks)
-#define SHAKE_HOLD_TICKS_50HZ     24  // 3ms
-#define SHAKE_HOLD_TICKS_60HZ     21  // 2.625ms
+/**
+ * @brief Controls the PWM frequency jittering sequence for EMI optimization or switching noise reduction.
+ *
+ * This function implements a multi-phase state machine that gradually adjusts the PWM duty
+ * (PW0D) through controlled jittering (decreasing and increasing phases).
+ *
+ * The jitter process is triggered by Start_Frequency_jitter(), and runs over the following states:
+ *
+ *  - JITTER_HOLD:          Initial idle delay before jitter starts
+ *  - JITTER_HOLD_GAP:      Adds a fixed gap (2 ticks) before enabling PWM interrupts to prevent abrupt transitions
+ *  - JITTER_DECREASE:      PWM0_ISR is enabled, and will decrement PW0D gradually
+ *  - JITTER_INCREASE:      PWM0_ISR continues, now incrementing PW0D back
+ *  - JITTER_INCREASE_GAP:  PWM interrupts are disabled, followed by a delay before finalizing
+ *
+ * Two control flags are used:
+ *  - f_jitter_in_progress: Indicates the jitter sequence is running (for general control flow)
+ *  - f_jitter_active:      Specifically indicates that PWM0_ISR is allowed to modify PW0D
+ *
+ * The f_jitter_active flag prevents race conditions between the main control loop and PWM0_ISR.
+ * Without this guard, simultaneous writes to PW0D from the main program and interrupt context
+ * could lead to undefined hardware behavior or unpredictable results.
+ *
+ * This function must be called every 125us tick from the main control loop.
+ */
 
-#define SHAKE_DEC_TICKS_50HZ      16  // 2ms
-#define SHAKE_DEC_TICKS_60HZ      12  // 1.5ms
+// JITTER_HOLD duration (unit: 125us ticks)
+#define JITTER_HOLD_TICKS_50HZ     22  // 2.750ms
+#define JITTER_HOLD_TICKS_60HZ     19  // 2.375ms
 
-#define SHAKE_INC_TICKS_50HZ      16  // 2ms
-#define SHAKE_INC_TICKS_60HZ      12  // 1.5ms
+#define JITTER_DEC_TICKS_50HZ      16  // 2ms
+#define JITTER_DEC_TICKS_60HZ      12  // 1.5ms
+
+#define JITTER_INC_TICKS_50HZ      16  // 2ms
+#define JITTER_INC_TICKS_60HZ      12  // 1.5ms
 
 
-static bit f_shake_active = 0;            // 抖頻啟動旗標
-static uint8_t shake_start_tick = 0;      // 記錄啟動時間點
-static FrequencyShakeState frequency_shake_state = SHAKE_HOLD;
+static bit f_jitter_in_progress  = 0;     // 抖頻啟動旗標
+bit f_jitter_active = 0;     // 抖頻啟動旗標
+static uint8_t jitter_state_start_tick = 0;     // 記錄啟動時間點
+FrequencyJitterState Frequency_jitter_state = JITTER_HOLD;
 
-void Frequency_shake(void)
+void Frequency_jitter(void)
 {
-    static uint8_t elapsed;
-    
-    // 若不在加熱狀態，不執行任何動作
-    if (!f_heating_initialized) {
-        f_shake_active = 0;
-        frequency_shake_state = SHAKE_HOLD;
-        return;
-    }
+  static uint8_t elapsed;
 
-    // 狀態尚未被觸發，什麼都不做
-    if (!f_shake_active)
-        return;
+  // 若不在加熱狀態，不執行任何動作
+  if (!f_heating_initialized) {
+    f_jitter_in_progress  = 0;
+    f_jitter_active = 0;
+    Frequency_jitter_state = JITTER_HOLD;
+    return;
+  }
 
-    elapsed = system_ticks - shake_start_tick;
+  // 狀態尚未被觸發，什麼都不做
+  if (!f_jitter_in_progress )
+    return;
 
-    switch (frequency_shake_state)
-    {
-        case SHAKE_HOLD:
-            if (elapsed >= (f_AC_50Hz ? SHAKE_HOLD_TICKS_50HZ : SHAKE_HOLD_TICKS_60HZ)) {
-                frequency_shake_state = SHAKE_DECREASE;
-                shake_start_tick = system_ticks;
-                P10 = 0;  //HCW**
-            }
-            break;
+  elapsed = system_ticks - jitter_state_start_tick;
 
-        case SHAKE_DECREASE:
-            if (elapsed >= (f_AC_50Hz ? SHAKE_DEC_TICKS_50HZ : SHAKE_DEC_TICKS_60HZ)) {
-                frequency_shake_state = SHAKE_INCREASE;
-                shake_start_tick = system_ticks;
-                P10 = 1;  //HCW**
-            }
-            break;
+  switch (Frequency_jitter_state)
+  {
+    case JITTER_HOLD:
+        if (elapsed >= (f_AC_50Hz ? JITTER_HOLD_TICKS_50HZ : JITTER_HOLD_TICKS_60HZ)) {
+            Frequency_jitter_state = JITTER_HOLD_GAP;
+            jitter_state_start_tick = system_ticks;
+        }
+        break;
+        
+    case JITTER_HOLD_GAP:
+        if (elapsed >= 2) {
+            f_jitter_active = 1;
+            Frequency_jitter_state = JITTER_DECREASE;
+            jitter_state_start_tick = system_ticks;
+            PW0F_CLEAR;
+            PWM_INTERRUPT_ENABLE;
+        }
+        break;
 
-        case SHAKE_INCREASE:
-            if (elapsed >= (f_AC_50Hz ? SHAKE_INC_TICKS_50HZ : SHAKE_INC_TICKS_60HZ)) {
-                frequency_shake_state = SHAKE_HOLD;
-                f_shake_active = 0;  // 抖頻結束，等待下一次觸發
-                P10 = 0;  //HCW**
-            }
-            break;
-    }
+    case JITTER_DECREASE:
+        if (elapsed >= (f_AC_50Hz ? JITTER_DEC_TICKS_50HZ : JITTER_DEC_TICKS_60HZ)) {
+            Frequency_jitter_state = JITTER_INCREASE;
+            jitter_state_start_tick = system_ticks;
+        }
+        break;
+
+    case JITTER_INCREASE:
+        if (elapsed >= (f_AC_50Hz ? JITTER_INC_TICKS_50HZ : JITTER_INC_TICKS_60HZ)) {
+            Frequency_jitter_state = JITTER_INCREASE_GAP;
+            jitter_state_start_tick = system_ticks;
+            PWM_INTERRUPT_DISABLE;
+        }
+        break;
+        
+    case JITTER_INCREASE_GAP:
+        if (elapsed >= 2) {
+            Frequency_jitter_state = JITTER_HOLD;
+            f_jitter_in_progress = 0;
+            f_jitter_active = 0;
+        }
+        break;
+  }
 }
 
-void Start_Frequency_Shake(void)
-{
-    P10 = 1;  //HCW**
-    f_shake_active = 1;
-    frequency_shake_state = SHAKE_HOLD;
-    shake_start_tick = system_ticks;
+void Start_Frequency_jitter(void)
+{   
+    f_jitter_in_progress  = 1;
+    Frequency_jitter_state = JITTER_HOLD;
+    jitter_state_start_tick = system_ticks;
 }
 
 
@@ -1806,6 +1851,7 @@ void Start_Frequency_Shake(void)
 #include "config.h"
 #include "power.h"
 #include "system.h"
+#include "comparator.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -1821,26 +1867,70 @@ void PWM_Init(void)
 {
   PW0M = 0;
   PW0Y = PWM_MAX_WIDTH; // 設定 PW0Y 為最大值 patch, 防止不小心反向
-  //PW0D = 0x100;       // 設定 PW0D 為最大值 patch
   
-  PW0M1 = mskSFDL;
+  // Do not enable SFDL, as turning it on introduces a bug when reading/write PW0D.
+  //PW0M1 = mskSFDL;
   
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS;
-  
 }
+
+
+
+/**
+ * PWM0_ISR handles:
+ * - Slowdown ramping during periodic heating
+ * - High-voltage PW0D adjustment request from CMP2 (via ISR_f_CMP2_PW0D_request)
+ * - Frequency jitter logic for EMI reduction
+ *
+ * Handle CMP2 PW0D adjustment request.
+ * This ensures PW0D is only written from one context (ISR or main) to avoid hardware glitch.
+ * If processed here, clear the flag and exit early to avoid overlapping with jitter control.
+ *
+ */
+
+//volatile uint16_t PW0D_val_ISR = 0;
+//volatile uint16_t PW0D_val_main = 0;
 
 void PWM0_ISR(void) interrupt ISRPwm0
 {
-    if ((system_state == PERIODIC_HEATING) &&
-        (periodic_heat_state == PERIODIC_SLOWDOWN_PHASE)) 
-    {
-        if (PW0D < SLOWDOWN_PWM_MAX_WIDTH) {
-            PW0D++;
-        } else {
-            PW0D = SLOWDOWN_PWM_MAX_WIDTH;
-        }
+  // IGBT_C_slowdown ramp-up
+  if ((system_state == PERIODIC_HEATING) &&
+      (periodic_heat_state == PERIODIC_SLOWDOWN_PHASE)) 
+  {
+    if (PW0D < SLOWDOWN_PWM_MAX_WIDTH) {
+        PW0D++;
+    } else {
+        PW0D = SLOWDOWN_PWM_MAX_WIDTH;
     }
+  }
 
+  // In heating logic
+  if (f_heating_initialized) {
+    // IGBT_High-voltage protection (decrease PW0D)
+    if (ISR_f_CMP2_PW0D_request ) {
+      ISR_f_CMP2_PW0D_request = 0;
+
+      if ((PW0D >= (3 + PWM_MIN_WIDTH))) {
+        PW0D -= 3;
+      } else {
+        PW0D = PWM_MIN_WIDTH;
+      }
+      
+      return; // Early exit to avoid simultaneous jitter handling
+    }
+    
+    // Frequency jitter control
+    if (Frequency_jitter_state == JITTER_DECREASE) {
+      if (PW0D > PWM_MIN_WIDTH) {
+          PW0D--;
+      }
+    } else if (Frequency_jitter_state == JITTER_INCREASE) {
+      if (PW0D < PWM_MAX_WIDTH) {
+          PW0D++;
+      }
+    }
+  }
+  
 }
 
 
@@ -2033,40 +2123,20 @@ uint16_t voltage_RMS_V = 0;
 
 // 增加 PWM 寬度
 void Increase_PWM_Width(uint8_t val) {
-//    // 保存 CM2SF 狀態
-//    uint8_t cm2sf_status = CM2M & mskCM2SF;
-
-//    // 關閉 CM2SF 功能
-//    CM2M &= ~mskCM2SF;
- 
-    // 增加 PWM 寬度
-    if ((PW0D + val) <= PWM_MAX_WIDTH) { // 確保不超過最大值
-        PW0D += val;
-    } else {
-        PW0D = PWM_MAX_WIDTH; // 避免超過最大寬度
-    }
-    
-//    // 恢復 CM2SF 狀態
-//    CM2M |= cm2sf_status;
+  if ((PW0D + val) <= PWM_MAX_WIDTH) { // 確保不超過最大值
+      PW0D += val;
+  } else {
+      PW0D = PWM_MAX_WIDTH; // 避免超過最大寬度
+  }
 }
 
 // 減少 PWM 寬度
 void Decrease_PWM_Width(uint8_t val) {
-//    // 保存 CM2SF 狀態
-//    uint8_t cm2sf_status = CM2M & mskCM2SF;
-
-//    // 關閉 CM2SF 功能
-//    CM2M &= ~mskCM2SF;
-
-  // 減少 PWM 寬度
   if ((PW0D >= (val + PWM_MIN_WIDTH))) { // 確保不小於最小值
       PW0D -= val;
   } else {
       PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
   }
-  
-//    // 恢復 CM2SF 狀態
-//    CM2M |= cm2sf_status;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2078,7 +2148,7 @@ void Power_Control(void)
         return; // 若未到 5ms，直接返回
     }
     // 重啟倒數計時器
-    cntdown_timer_start(CNTDOWN_TIMER_POWER_CONTROL, 5);
+    cntdown_timer_start(CNTDOWN_TIMER_POWER_CONTROL, 3); // 5ms->3ms
   
     // If heating is not initialized, handle according to system_state
     if (!f_heating_initialized) {
@@ -2109,10 +2179,6 @@ void Power_Control(void)
     
     #if TUNE_MODE == 1
 //    tune_cnt++;
-//    if(current_power >= tune_record)
-//    {
-//      tune_record = current_power;
-//    }
 //    
 //    if(tune_cnt >= 600)
 //    {
@@ -2122,13 +2188,13 @@ void Power_Control(void)
 //    }
     #endif
     
-    // Patch for PW0D shrink to 0 by CM2SF
-    if(PW0D < PWM_MIN_WIDTH) 
-    {
-      PW0M &= ~mskPW0EN;
-      PW0D = PWM_MIN_WIDTH;
-      PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // Enable PWM
-    }
+//    // Patch for PW0D shrink to 0 by CM2SF HCW**
+//    if(PW0D < PWM_MIN_WIDTH) 
+//    {
+//      PW0M &= ~mskPW0EN;
+//      PW0D = PWM_MIN_WIDTH;
+//      PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // Enable PWM
+//    }
     
 //    // Compare target current with actual measured current
 //    if (target_current > current_RMS_mA) {
@@ -2137,13 +2203,31 @@ void Power_Control(void)
 //      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
 //    }
     
+    // Bug fix: prevent simultaneous PW0D access from main loop and ISR
+    if( f_jitter_active != 0) {
+      return; 
+    }
+    
+    // Handle CMP2 PW0D adjustment request. (IC_BUG)
+    // This ensures PW0D is only written from one context (ISR or main) to avoid hardware glitch.
+    // If processed here, clear the flag and exit early to avoid overlapping with jitter control.
+    if (ISR_f_CMP2_PW0D_request) {
+      ISR_f_CMP2_PW0D_request = 0;
+    
+      if ((PW0D >= (3 + PWM_MIN_WIDTH))) {
+          PW0D -= 3;
+      } else {
+          PW0D = PWM_MIN_WIDTH;
+      }
+      return;
+    }
+    
     // Compare target power with actual measured current_power
     if (target_power > current_power) {
       Increase_PWM_Width(1); 
     } else {
       Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
     }
-    
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2515,12 +2599,11 @@ void Error_Process(void)
       
       // Stop_heating again
       stop_heating();
-      
+
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
       //pot_analyze_state = PWR_UP; // HCW**Cancel the pot analysis process.
       
-      // Set I2C status code based on error type
       // Set I2C status code based on error type
       if (Surge_Overvoltage_Flag) {
           i2c_status_code = I2C_STATUS_OVERVOLTAGE;

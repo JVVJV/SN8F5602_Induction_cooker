@@ -200,6 +200,9 @@ void Decrease_PWM_Width(uint8_t val) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+volatile char PW0D_delta_req_pwr_ctrl = 0;
+volatile uint8_t PW0D_lock = 0;
+
 // 功率控制函式
 void Power_Control(void)
 {
@@ -208,7 +211,7 @@ void Power_Control(void)
         return; // 若未到 5ms，直接返回
     }
     // 重啟倒數計時器
-    cntdown_timer_start(CNTDOWN_TIMER_POWER_CONTROL, 3); // 5ms->3ms
+    cntdown_timer_start(CNTDOWN_TIMER_POWER_CONTROL, 4); // 5ms->4ms
   
     // If heating is not initialized, handle according to system_state
     if (!f_heating_initialized) {
@@ -222,9 +225,10 @@ void Power_Control(void)
     // 當功率大於高功率標準時處理
     if (current_power > HIGH_POWER_LEVEL) {
         if (error_flags.f.Voltage_quick_change) {
-            // 電壓快速變化，減少 PWM 寬度
-            Decrease_PWM_Width(PWM_ADJUST_QUICK_CHANGE);
-            return; // 直接返回，避免進一步處理
+          // 電壓快速變化，減少 PWM 寬度
+          PW0D_delta_req_pwr_ctrl = -1;
+          PWM_INTERRUPT_ENABLE;         // enable PWM ISR
+          return; // 直接返回，避免進一步處理
         }
     }
     
@@ -239,7 +243,7 @@ void Power_Control(void)
     
     #if TUNE_MODE == 1
 //    tune_cnt++;
-//    
+    
 //    if(tune_cnt >= 600)
 //    {
 //      PW0M = 0;
@@ -263,32 +267,27 @@ void Power_Control(void)
 //      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
 //    }
     
-    // Bug fix: prevent simultaneous PW0D access from main loop and ISR
-    if( f_jitter_active != 0) {
-      return; 
-    }
-    
-    // Handle CMP2 PW0D adjustment request. (IC_BUG)
-    // This ensures PW0D is only written from one context (ISR or main) to avoid hardware glitch.
-    // If processed here, clear the flag and exit early to avoid overlapping with jitter control.
-    if (ISR_f_CMP2_PW0D_request) {
-      ISR_f_CMP2_PW0D_request = 0;
-    
-      if ((PW0D >= (3 + PWM_MIN_WIDTH))) {
-          PW0D -= 3;
-      } else {
-          PW0D = PWM_MIN_WIDTH;
-      }
-      return;
-    }
+//    // Bug fix: prevent simultaneous PW0D access from main loop and ISR HCW***
+//    if( f_jitter_active != 0) {
+//      return; 
+//    }
     
     // Compare target power with actual measured current_power
     if (target_power > current_power) {
-      Increase_PWM_Width(1); 
+      PW0D_delta_req_pwr_ctrl = 1;
     } else {
-      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
+      PW0D_delta_req_pwr_ctrl = -1;
     }
+    PWM_INTERRUPT_ENABLE;         // enable PWM ISR
+    
 }
+
+void PWM_Request_Reset(void)
+{
+    PW0D_req_CMP2_isr       = FALSE;
+    PW0D_delta_req_pwr_ctrl = 0;
+}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define POT_CONFIRM_INTERVAL  2   // 鍋具確認倒數計時值 (2ms)
