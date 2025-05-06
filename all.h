@@ -218,6 +218,23 @@ void I2C_Communication(void);
 #define CM2_RISING_TRIGGER    (1<<3)
 #define CM2_FALLING_TRIGGER   (0<<3)
 // CMDB2
+#define CM2_DEBOUNCE_0FCPU      (0<<0)
+#define CM2_DEBOUNCE_2FCPU      (1<<0)
+#define CM2_DEBOUNCE_4FCPU      (2<<0)
+#define CM2_DEBOUNCE_6FCPU      (3<<0)
+#define CM2_DEBOUNCE_8FCPU      (4<<0)
+#define CM2_DEBOUNCE_10FCPU     (5<<0)
+#define CM2_DEBOUNCE_12FCPU     (6<<0)
+#define CM2_DEBOUNCE_14FCPU     (7<<0)
+#define CM2_DEBOUNCE_16FCPU     (8<<0)
+#define CM2_DEBOUNCE_18FCPU     (9<<0)
+#define CM2_DEBOUNCE_20FCPU     (10<<0)
+#define CM2_DEBOUNCE_22FCPU     (11<<0)
+#define CM2_DEBOUNCE_24FCPU     (12<<0)
+#define CM2_DEBOUNCE_26FCPU     (13<<0)
+#define CM2_DEBOUNCE_28FCPU     (14<<0)
+#define CM2_DEBOUNCE_30FCPU     (15<<0)
+
 
 // CM2REF
 #define CM2REF_VDD      (0<<7)
@@ -262,6 +279,24 @@ void I2C_Communication(void);
 #define CM4_RISING_TRIGGER    (1<<3)
 #define CM4_FALLING_TRIGGER   (0<<3)
 
+// CMDB4
+#define CM4_DEBOUNCE_0FCPU      (0<<0)
+#define CM4_DEBOUNCE_2FCPU      (1<<0)
+#define CM4_DEBOUNCE_4FCPU      (2<<0)
+#define CM4_DEBOUNCE_6FCPU      (3<<0)
+#define CM4_DEBOUNCE_8FCPU      (4<<0)
+#define CM4_DEBOUNCE_10FCPU     (5<<0)
+#define CM4_DEBOUNCE_12FCPU     (6<<0)
+#define CM4_DEBOUNCE_14FCPU     (7<<0)
+#define CM4_DEBOUNCE_16FCPU     (8<<0)
+#define CM4_DEBOUNCE_18FCPU     (9<<0)
+#define CM4_DEBOUNCE_20FCPU     (10<<0)
+#define CM4_DEBOUNCE_22FCPU     (11<<0)
+#define CM4_DEBOUNCE_24FCPU     (12<<0)
+#define CM4_DEBOUNCE_26FCPU     (13<<0)
+#define CM4_DEBOUNCE_28FCPU     (14<<0)
+#define CM4_DEBOUNCE_30FCPU     (15<<0)
+
 // CM4REF
 #define CM4REF_VDD      (0<<7)
 #define CM4REF_INTREF   (1<<7)
@@ -295,7 +330,7 @@ void I2C_Communication(void);
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile uint8_t ISR_f_CMP2_PW0D_request;
+extern volatile uint8_t PW0D_req_CMP2_isr ;
 
 extern volatile uint8_t ISR_f_CM3_AC_sync;
 extern volatile uint8_t ISR_f_CM3_AC_Zero_sync;
@@ -348,12 +383,11 @@ void Surge_Protection_Modify(void);
 #define MEASUREMENTS_PER_50HZ 160     // 每 50 Hz 完整週期所需的量測次數 (base on 125us)
 
 // AC Frequency Mode Control
-#define AC_FREQ_MODE_AUTO         0
-#define AC_FREQ_MODE_FORCE_50HZ   1
-#define AC_FREQ_MODE_FORCE_60HZ   2
+#define AC_FREQ_MODE_FORCE_50HZ   0
+#define AC_FREQ_MODE_FORCE_60HZ   1
 
 // Select desired AC frequency mode here:
-#define AC_FREQ_MODE  AC_FREQ_MODE_AUTO
+#define AC_FREQ_MODE  AC_FREQ_MODE_FORCE_60HZ
 
 
 #define CURRENT_ADC_CHANNEL       19  // OPO  定義系統電流量測的 ADC 通道 
@@ -450,7 +484,7 @@ void GPIO_Init(void);
 #define I2C_BUFFER_SIZE  3  // **最大緩衝區長度**
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile bit f_i2c_power_received;   // **功率接收完成標誌**
+extern volatile uint8_t ISR_f_i2c_power_received;   // **功率接收完成標誌**
 
 /*_____ M A C R O S ________________________________________________________*/
 #define I2C_PIN_SET_INPUT_0     P0M &= ~((0x01U<<6)|(0x01U<<7));  //SCL = P06,SDA = P07.
@@ -551,10 +585,8 @@ typedef enum {
 
 typedef enum {
     JITTER_HOLD,            // Initial idle state before jitter starts
-    JITTER_HOLD_GAP,        // Delay (2 ticks) before enabling PWM interrupt
     JITTER_DECREASE,        // Frequency jitter decreasing phase, PWM0_ISR will decrement PW0D
     JITTER_INCREASE,        // Frequency jitter increasing phase, PWM0_ISR will increment PW0D
-    JITTER_INCREASE_GAP     // Delay (2 ticks) after disabling PWM interrupt before finishing
 } FrequencyJitterState;
 
 
@@ -667,6 +699,9 @@ extern volatile uint16_t PW0D_val_main;
 
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
+#define TRUE          1
+#define FALSE         0
+
 // CLKSEL
 #define SYS_CLK_DIV1    (0<<0)
 #define SYS_CLK_DIV2    (1<<0)
@@ -771,6 +806,9 @@ extern uint16_t current_base;  // 存儲基準電流 ADC 值
 extern uint16_t recorded_1000W_PW0D;
 extern uint8_t ac_half_low_ticks_avg;
 
+extern volatile char PW0D_delta_req_pwr_ctrl;
+extern volatile uint8_t PW0D_lock;
+
 extern bit f_pot_detected;
 extern bit f_AC_50Hz; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**
 extern uint8_t measure_per_AC_cycle;
@@ -801,6 +839,7 @@ void Heat_Control(void);
 void pause_heating(void);
 void Periodic_Power_Control(void);
 void Power_Control(void);
+void PWM_Request_Reset(void);
 void Pot_Detection(void);
 void Pot_Analyze(void);
 void Pot_Detection_In_Heating(void);

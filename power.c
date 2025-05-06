@@ -27,7 +27,7 @@ bit f_power_updated = 0;
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
 uint16_t current_adc_new = 0;  // Store the measured current value (adc_code)
-uint16_t idata PW0D_backup = 0;
+uint16_t PW0D_backup = 0;
 static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
@@ -104,18 +104,6 @@ void Power_read(void)
       current_power = (uint32_t)voltage_RMS_V * current_RMS_mA;
       f_power_updated = 1;
     }
-    
-    #if TUNE_MODE == 1
-//    tune_cnt++;
-//    if(tune_cnt >= 300)
-//    {
-//      PW0M = 0;
-//      while(1);
-//    }
-    
-//    tune_record1 = current_RMS_mA;
-//    tune_record2 = current_adc_avg;
-    #endif
     
     pwr_read_cnt = 0;
     current_adc_sum = 0;
@@ -212,8 +200,8 @@ uint16_t current_lookup_interpolation(uint16_t adc_val)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define DEFAULT_BASE_CURRENT_ADC   316   // 預設基準電流 ADC 值
-#define BASE_CURRENT_TOLERANCE     8   // 允許誤差百分比（8%）
+#define DEFAULT_BASE_CURRENT_ADC   316    // 預設基準電流 ADC 值
+#define BASE_CURRENT_TOLERANCE     8      // 允許誤差百分比（8%）
 
 // 在編譯期間計算允許的上下限
 #define BASE_CURRENT_LOWER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 - BASE_CURRENT_TOLERANCE)) / 100)
@@ -243,8 +231,8 @@ void Measure_Base_Current(void) {
 #define VOLTAGE_LOWER_LIMIT          170     // V 欠壓觸發
 #define VOLTAGE_RECOVER_LOW          180     // V 欠壓回復
 
-#define CURRENT_UPPER_LIMIT_mA      11000   // 11A = 11000mA
-#define CURRENT_RECOVER_LIMIT_mA    10000   // 10A 過流回復
+#define CURRENT_UPPER_LIMIT_mA      9600    // 9.6A = 9500 mA
+#define CURRENT_RECOVER_LIMIT_mA    9400   // 9.4A 過流回復
 
 //#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
 //#define CURRENT_CHANGE_THRESHOLD 10    // 電流快速變化閾值 (單位：安培)
@@ -325,6 +313,7 @@ void stop_heating(void)
   
   PWM_Request_Reset();
   
+  power_setting = 0;
   f_pot_detected = 0;       // 重置鍋具檢測標誌
   f_heating_initialized = 0;
 }
@@ -339,8 +328,7 @@ void pause_heating(void)
 }
 
 void shutdown_process(void)
-{
-    // 一次性停止加熱並保存狀態
+{    
     stop_heating();
     //save_system_state();
 }
@@ -381,21 +369,23 @@ void Heat_Control(void)
 
   // 檢查鍋具狀態
   if (f_pot_detected == 0) {
-    BUZZER_ENABLE; // ENABLE Fan or Buzzer
-    
-    Pot_Detection(); // 執行鍋具檢測邏輯
+    Fan_Enable();     // drive fan at normal or full speed
+    Pot_Detection();  // 執行鍋具檢測邏輯
     return;
   }
   
   // 一般加熱模式
   if (power_setting > 800000) {
-    // If power_setting exceeds 1000W and IGBT heat warning is active,
-    // apply power cap at 1000W to prevent thermal stress.
-    if (warning_flags.f.IGBT_heat_warning) {
-        target_power = 1000000;
-    } else {
-        target_power = power_setting;
-    }
+    
+  // NOTE: power capping is currently disabled — always use the requested power HCW***
+//    // If power_setting exceeds 1000W and IGBT heat warning is active, apply power cap at 1000W to prevent thermal stress.
+//    if (warning_flags.f.IGBT_heat_warning) {
+//        target_power = 1000000;
+//    } else {
+//        target_power = power_setting;
+//    }
+    
+    target_power  = power_setting;
     
     system_state = HEATING;       // 切換系統狀態為 HEATING
     
@@ -430,29 +420,33 @@ void Heat_Control(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#define POWER_MEASURE_DELAY_CYCLES  2 // Number of AC sync cycles to delay before measuring power
+
 PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
 uint8_t periodic_AC_sync_cnt = 0;
-bit f_power_measure_valid  = 0;  // **Flag to indicate current measurement stabilization**
+bit f_power_measure_valid  = 0;  // Flag to indicate current measurement stabilization
 
 void Periodic_Power_Control(void) {
-  static uint8_t phase_start_tick = 0;  // **共用變數：記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間*
-  static bit f_first_entry = 1;  // **標記是否為第一次進入 PERIODIC_HEATING**
-  static bit f_periodic_pulse_init = 1;  // 標記是否需要 PULSE_WIDTH_PERIODIC_START
-  uint8_t elapsed_ticks;
+  static uint8_t phase_start_tick = 0;  // 記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間
+  static uint8_t elapsed_ticks;
+  static bit f_first_entry = 1;         // 標記是否為第一次進入 PERIODIC_HEATING
+  static bit f_periodic_pulse_init = 1; // 標記是否需要 PULSE_WIDTH_PERIODIC_START
   
-  // **確保只有在 PERIODIC_HEATING 狀態下執行**
+  // Only run in PERIODIC_HEATING state
   if (system_state != PERIODIC_HEATING) {
-      f_first_entry = 1;  // **當離開 PERIODIC_HEATING 時，重置標誌**
-      f_periodic_pulse_init = 1;  // **當離開 PERIODIC_HEATING 時，重置標誌**
-      return;
+    // Reset entry flags when leaving periodic heating  
+    f_first_entry = 1;
+    f_periodic_pulse_init = 1;
+    return;
   }
   
-  // **初始化狀態，僅在進入 PERIODIC_HEATING 的第一個周期執行**
+  //  Initialization on first entry to periodic heating
   if (f_first_entry) {
     periodic_AC_sync_cnt = 0;
     f_power_measure_valid = 0;
+    ISR_f_CM3_AC_Periodic_sync = 0;
     
-    // **判斷是否已經初始化過加熱**
+    // Choose starting phase based on whether heating was already initialized
     if (f_heating_initialized) {
         periodic_heat_state = PERIODIC_HEAT_PHASE;
     } else {
@@ -462,17 +456,18 @@ void Periodic_Power_Control(void) {
     f_first_entry = 0;  // clear f_first_entry
   }  
   
-  // **檢查是否有新的 AC 訊號週期**
+  // Count AC sync events
   if (ISR_f_CM3_AC_sync) {
       ISR_f_CM3_AC_sync = 0;
       periodic_AC_sync_cnt++;
   }
   
-  // **計算經過時間**
+  // Compute elapsed ticks since the start of current phase
   elapsed_ticks = system_ticks - phase_start_tick;
 
   switch (periodic_heat_state) {
     case PERIODIC_REST_PHASE:
+      // After rest_cycle AC periods, enter slowdown phase
       if (periodic_AC_sync_cnt >= Periodic_table[level].rest_cycle) {
         periodic_AC_sync_cnt = 0;
         
@@ -488,7 +483,7 @@ void Periodic_Power_Control(void) {
       break;
 
     case PERIODIC_SLOWDOWN_PHASE:
-      // **等待 `ac_half_low_ticks_avg` 週期時間，再進入加熱**
+      // Wait half-cycle average time before resuming heating
       if (elapsed_ticks >= ac_half_low_ticks_avg) {
         pause_heating();    // Stop IGBT_C_slowdown PWM
         
@@ -505,7 +500,8 @@ void Periodic_Power_Control(void) {
       break;
 
     case PERIODIC_HEAT_PHASE:
-      if (periodic_AC_sync_cnt == 2) {
+      // Delay power measurement until current signal stabilizes (after two AC sync events)
+      if (periodic_AC_sync_cnt == POWER_MEASURE_DELAY_CYCLES) {
         f_power_measure_valid = 1;
       }
     
@@ -517,7 +513,7 @@ void Periodic_Power_Control(void) {
       break;
 
     case PERIODIC_HEAT_END_PHASE:
-      // **等待 `ac_half_low_ticks_avg`，才真正停止加熱**
+      // Wait half-cycle then actually stop heating
       if (elapsed_ticks >= ac_half_low_ticks_avg) {
         pause_heating();
         f_power_measure_valid = 0;
@@ -547,7 +543,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   // Set PWM duty cycle based on pulse_width_select
   switch (pulse_width_select) {
     case PULSE_WIDTH_MIN:  // Set PW0D to minimum width
-        PW0D = PWM_MIN_WIDTH;
+        PW0D = PWM_INIT_WIDTH;
         break;
     case PULSE_WIDTH_PERIODIC_START:  // PERIODIC mode reference value set to 1000W HCW**
         PW0D = 280;
@@ -587,13 +583,13 @@ void IGBT_C_slowdown(void) {
     PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
   
-    // **開啟 PWM**
+    // Enable PWM
     PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPWM0OUT;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Zero crossing trigger ticks (1 tick = 125us)
-#define ZERO_CROSS_TRIGGER_TICKS_50HZ   14  // 1.750ms
+#define ZERO_CROSS_TRIGGER_TICKS_50HZ   13  // 1.625ms
 #define ZERO_CROSS_TRIGGER_TICKS_60HZ   12  // 1.500ms
 
 #if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
@@ -639,7 +635,8 @@ void Zero_Crossing_Task(void)
     f_zero_cross_task_active = 0;
     real_zero_cross_timer = 0;
 
-    // real_zero task
+    // Real_zero task
+    P10 = ~P10; //HCW**
     Start_Frequency_jitter();  // Execute zero-cross triggered function(s)
   }
 }
@@ -672,7 +669,7 @@ void Zero_Crossing_Task(void)
  */
 
 // JITTER_HOLD duration (unit: 125us ticks)
-#define JITTER_HOLD_TICKS_50HZ     24  // 3ms
+#define JITTER_HOLD_TICKS_50HZ     23  // 2.875ms
 #define JITTER_DEC_TICKS_50HZ      16  // 2ms
 #define JITTER_INC_TICKS_50HZ      16  // 2ms
 
@@ -690,9 +687,10 @@ void Zero_Crossing_Task(void)
   #define JITTER_INC_TICKS   JITTER_INC_TICKS_60HZ
 #endif
 
-static bit f_jitter_in_progress  = 0;     // 抖頻啟動旗標
-bit f_jitter_active = 0;     // 抖頻啟動旗標
-static uint8_t jitter_state_start_tick = 0;     // 記錄啟動時間點
+static bit f_jitter_in_progress  = 0;
+bit f_jitter_active = 0;                    // 抖頻啟動旗標
+static uint8_t jitter_state_start_tick = 0; // 記錄啟動時間點
+volatile uint8_t jitter_adjust_cnt = 0;
 FrequencyJitterState Frequency_jitter_state = JITTER_HOLD;
 
 void Frequency_jitter(void)
@@ -750,10 +748,9 @@ void Frequency_jitter(void)
 void Start_Frequency_jitter(void)
 {   
     f_jitter_in_progress  = 1;
+    jitter_adjust_cnt = 0;
     Frequency_jitter_state = JITTER_HOLD;
     jitter_state_start_tick = system_ticks;
 }
-
-
 
 

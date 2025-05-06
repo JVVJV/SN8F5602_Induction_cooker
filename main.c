@@ -26,9 +26,7 @@
 #include "I2C.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
-
-
-#define SYSTEM_TICKS_PER_10MS 80  // 每 10 ms 的計數 (125 μs * 80 = 10 ms)
+#define SYSTEM_TICKS_PER_10MS 80    // 每 10 ms 的計數 (125 μs * 80 = 10 ms)
 #define SYSTEM_10MS_PER_SECOND 100  // 每秒包含的 10 ms 計數
 
 TaskType current_task = TASK_HEAT_CONTROL;
@@ -80,17 +78,10 @@ void main (void)
   Measure_Base_Current(); // 量測Base電流, for OP offset
   Surge_Protection_Modify(); 
   
-  // 設置初始系統狀態
-  system_state = STANDBY;  // 系統默認進入待機模式
-
-  #if TUNE_MODE == 1
-//  power_setting = 800000;
-  #endif
-  
   // Reset timing-related flags used for scheduling or synchronization
-  f_125us = 0;
+  ISR_f_125us = 0;
   ISR_f_CM3_AC_Zero_sync = 0;
-  ISR_f_CM3_AC_sync = 0;   // HCW** need to bo modify.
+  ISR_f_CM3_AC_sync = 0;
   
   // 進入主程式循環
   while (1) {
@@ -98,8 +89,8 @@ void main (void)
     I2C_Communication();
     
     // 125 μs 定時邏輯
-    if (f_125us) {
-      f_125us = 0;  // 清除 125 微秒旗標
+    if (ISR_f_125us) {
+      ISR_f_125us = 0;  // 清除 125 微秒旗標
             
       // 更新系統時間
       Update_System_Time();  
@@ -154,7 +145,7 @@ void main (void)
 
         default:  break;
       }
-    } //(f_125us) end
+    } //(ISR_f_125us) end
     
     // **間歇加熱模式：即時檢查 AC 訊號變化**
     Periodic_Power_Control();
@@ -170,9 +161,9 @@ void Warmup_Delay(void)
   
   while(cnt < 240) //125us* 240 = 30ms
   {    
-    if (f_125us)
+    if (ISR_f_125us)
     {
-      f_125us = 0;
+      ISR_f_125us = 0;
       cnt++;
     }
   }  

@@ -5,12 +5,6 @@
 #include <SN8F5602.h>
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
-#define SLAVE_SEL                 0
-#define MASTER_SEL                1
-
-#define I2C_R                     1
-#define I2C_W                     0
-
 #define	mskI2CCON_I2C_DIV_40			(0x00)
 #define	mskI2CCON_I2C_DIV_80			(0x01)
 #define	mskI2CCON_I2C_DIV_160			(0x02)
@@ -30,14 +24,14 @@
 
 #define	mskIEN1_INT_I2C									(0x01U<<0)
 
-
-#define	mskI2CMX    (1<<3)
+#define	mskI2CMX                        (1<<3)
 
 
 #define I2C_BUFFER_SIZE  3  // **最大緩衝區長度**
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile bit f_i2c_power_received;   // **功率接收完成標誌**
+extern volatile bit ISR_f_i2c_power_received;
+extern volatile bit ISR_f_I2C_error;
 
 /*_____ M A C R O S ________________________________________________________*/
 #define I2C_PIN_SET_INPUT_0     P0M &= ~((0x01U<<6)|(0x01U<<7));  //SCL = P06,SDA = P07.

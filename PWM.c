@@ -17,9 +17,7 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
-
 /*_____ D E F I N I T I O N S ______________________________________________*/
-
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -30,12 +28,11 @@ void PWM_Init(void)
   PW0M = 0;
   PW0Y = PWM_MAX_WIDTH; // 設定 PW0Y 為最大值 patch, 防止不小心反向
   
-  // Do not enable SFDL, as turning it on introduces a bug when reading/write PW0D.
+  // HCW*** Do not enable SFDL, as turning it on introduces a bug when reading/write PW0D.
   //PW0M1 = mskSFDL;
   
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS;
 }
-
 
 
 /**
@@ -49,10 +46,6 @@ void PWM_Init(void)
  * If processed here, clear the flag and exit early to avoid overlapping with jitter control.
  *
  */
-
-//volatile uint16_t PW0D_val_ISR = 0;
-//volatile uint16_t PW0D_val_main = 0;
-
 void PWM0_ISR(void) interrupt ISRPwm0
 {
   int tmp;
@@ -114,15 +107,15 @@ void PWM0_ISR(void) interrupt ISRPwm0
     if (Frequency_jitter_state == JITTER_DECREASE) {
       if (PW0D > PWM_MIN_WIDTH) {
           PW0D--;
+          jitter_adjust_cnt++;
       }
     } else if (Frequency_jitter_state == JITTER_INCREASE) {
-      if (PW0D < PWM_MAX_WIDTH) {
+      if ((PW0D < PWM_MAX_WIDTH) && (jitter_adjust_cnt > 0)) {
           PW0D++;
-      }
+          jitter_adjust_cnt--;
+        }
     }
-    
-  }
-  
-}
+  }// heating logic end
+}// PWM_ISR end
 
 

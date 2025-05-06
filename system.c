@@ -17,6 +17,7 @@
 #include "config.h"
 #include "power.h"
 #include "communication.h"
+#include "I2C.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define SYSTEM_TICKS_PER_1MS    8     // 125us*8 = 1ms
@@ -27,7 +28,7 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 static uint16_t cntdown_timers[MAX_CNTDOWN_TIMERS]; // 計時器數組
-volatile bit f_125us = 0;
+volatile bit ISR_f_125us = 0;
 bit exit_shutdown_flag = 0;
 bit f_shutdown_in_progress = 0;  // 關機進行標誌
 bit f_pot_detected = 0;
@@ -61,6 +62,7 @@ void shutdown_process(void);
 void finalize_shutdown(void);
 
 static bit shutdown_triggered = 0;           // 標記是否已觸發關機邏輯
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void SystemCLK_Init(void)
 {
@@ -116,8 +118,12 @@ void Shutdown_Task(void)
 }
 
 
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 初始化倒數計時模組
+
+/**
+ * @brief  Initialize all countdown timers to zero.
+ *
+ * Sets every timer in the module to expired (value = 0).
+ */
 void CNTdown_Timer_Init() 
 {
   uint8_t id;
@@ -127,17 +133,35 @@ void CNTdown_Timer_Init()
     }
 }
 
-// 開始倒數計時
+/**
+ * @brief   Start a countdown timer.
+ * @param   timer_id  ID of the timer (0 .. MAX_CNTDOWN_TIMERS-1).
+ * @param   duration  Initial countdown value in ticks (e.g., milliseconds).
+ *
+ * Sets the specified timer to the given duration. It will decrement
+ * once per call to cntdown_timer_update().
+ */
 void cntdown_timer_start(uint8_t timer_id, uint16_t duration) {
         cntdown_timers[timer_id] = duration; // 設置計時器初始值
 }
 
-// 檢查倒數計時器是否已到時間
+/**
+ * @brief   Check if a countdown timer has expired.
+ * @param   timer_id  ID of the timer to check.
+ * @return  1 if the timer has reached zero (expired), 0 otherwise.
+ *
+ * A timer is considered expired when its value is 0.
+ */
 uint8_t cntdown_timer_expired(uint8_t timer_id) {
     return (cntdown_timers[timer_id] == 0) ? 1 : 0;
 }
 
-// 更新所有倒數計時器（每 1ms 調用一次）
+/**
+ * @brief  Update all countdown timers.
+ * @note   Must be called at a fixed rate (e.g., in a 1 ms SysTick handler).
+ *
+ * Decrements each non-zero timer by one. Timers that reach zero remain at zero.
+ */
 void cntdown_timer_update() {
   uint8_t i;
     for (i = 0; i < MAX_CNTDOWN_TIMERS; i++) {
@@ -150,8 +174,8 @@ void cntdown_timer_update() {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Update_System_Time() {
-    static uint8_t last_1ms_ticks = 0;    // 上次更新 1ms 的 ticks 值
-    static uint16_t last_1s_time_1ms = 0;  // 上次 1 秒更新的 1 ms 記錄值
+    static uint8_t last_1ms_ticks = 0;      // 上次更新 1ms 的 ticks 值
+    static uint16_t last_1s_time_1ms = 0;   // 上次 1 秒更新的 1 ms 記錄值
 
     // 利用 system_ticks 減去已記錄值來計算 1 ms
     if ((system_ticks - last_1ms_ticks) >= SYSTEM_TICKS_PER_1MS) {
@@ -170,48 +194,46 @@ void Update_System_Time() {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define VOLTAGE_THRESHOLD 220          // 電壓門檻值 (220V)
+//#define VOLTAGE_THRESHOLD 220       // 電壓門檻值 (220V)  HCW*** not use now
+//uint16_t target_current = 0;        // 目標電流 mA  HCW*** not use now
 
-#define HIGH_POWER_LEVEL 2000000       // 高功率標準 (2000K mW)
+#define HIGH_POWER_LEVEL 2200000       // 高功率標準 (2200K mW)
 #define PWM_ADJUST_QUICK_CHANGE 3      // 電壓快速變化時減少的 PWM 寬度
-
-uint32_t current_power = 0;           // 目前功率 mW
-uint16_t target_current = 0;          // 目標電流 mA
 
 uint16_t current_RMS_mA = 0;
 uint16_t voltage_RMS_V = 0;
+uint32_t current_power = 0;           // 目前功率 mW
 
-// 增加 PWM 寬度
-void Increase_PWM_Width(uint8_t val) {
-  if ((PW0D + val) <= PWM_MAX_WIDTH) { // 確保不超過最大值
-      PW0D += val;
-  } else {
-      PW0D = PWM_MAX_WIDTH; // 避免超過最大寬度
-  }
-}
+//HCW*** handle PW0D request in PWM0_ISR now. 
+//void Increase_PWM_Width(uint8_t val) {
+//  if ((PW0D + val) <= PWM_MAX_WIDTH) { // 確保不超過最大值
+//      PW0D += val;
+//  } else {
+//      PW0D = PWM_MAX_WIDTH; // 避免超過最大寬度
+//  }
+//}
 
-// 減少 PWM 寬度
-void Decrease_PWM_Width(uint8_t val) {
-  if ((PW0D >= (val + PWM_MIN_WIDTH))) { // 確保不小於最小值
-      PW0D -= val;
-  } else {
-      PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
-  }
-}
+//void Decrease_PWM_Width(uint8_t val) {
+//  if ((PW0D >= (val + PWM_MIN_WIDTH))) { // 確保不小於最小值
+//      PW0D -= val;
+//  } else {
+//      PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
+//  }
+//}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 volatile char PW0D_delta_req_pwr_ctrl = 0;
-volatile uint8_t PW0D_lock = 0;
+volatile bit PW0D_lock = 0;
 
 // 功率控制函式
 void Power_Control(void)
 {
-    // 檢查 5ms 倒數計時器是否已到
+    // check 4ms countdown timer
     if (!cntdown_timer_expired(CNTDOWN_TIMER_POWER_CONTROL)) {
-        return; // 若未到 5ms，直接返回
+        return; // not yet 4ms
     }
-    // 重啟倒數計時器
-    cntdown_timer_start(CNTDOWN_TIMER_POWER_CONTROL, 4); // 5ms->4ms
+    // restart countdown timer
+    cntdown_timer_start(CNTDOWN_TIMER_POWER_CONTROL, 4); // 4ms
   
     // If heating is not initialized, handle according to system_state
     if (!f_heating_initialized) {
@@ -222,17 +244,24 @@ void Power_Control(void)
         return;  // Exit if heating is not initialized (PERIODIC_HEATING case)
     }
     
+    // If current exceeds 9.2A RMS, immediately request PWM decrease  HCW***
+    if (current_RMS_mA > 9200) {
+        PW0D_delta_req_pwr_ctrl = -1;
+        PWM_INTERRUPT_ENABLE;    // enable PWM ISR for adjustment
+        return;                  // skip further checks
+    }
+    
     // 當功率大於高功率標準時處理
     if (current_power > HIGH_POWER_LEVEL) {
         if (error_flags.f.Voltage_quick_change) {
           // 電壓快速變化，減少 PWM 寬度
           PW0D_delta_req_pwr_ctrl = -1;
-          PWM_INTERRUPT_ENABLE;         // enable PWM ISR
-          return; // 直接返回，避免進一步處理
+          PWM_INTERRUPT_ENABLE;   // enable PWM ISR for adjustment
+          return;                 // skip further checks
         }
     }
     
-//    // 判斷控制模式
+//    // 判斷控制模式 HCW*** not use now
 //    if (voltage_RMS_V >= VOLTAGE_THRESHOLD) {
 //        // 恆電流控制模式
 //        target_current = target_power / VOLTAGE_THRESHOLD;
@@ -240,17 +269,6 @@ void Power_Control(void)
 //        // 恆功率控制模式
 //        target_current = target_power / voltage_RMS_V;
 //    }
-    
-    #if TUNE_MODE == 1
-//    tune_cnt++;
-    
-//    if(tune_cnt >= 600)
-//    {
-//      PW0M = 0;
-//      _nop_();
-//      //while(1);
-//    }
-    #endif
     
 //    // Patch for PW0D shrink to 0 by CM2SF HCW**
 //    if(PW0D < PWM_MIN_WIDTH) 
@@ -260,16 +278,11 @@ void Power_Control(void)
 //      PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // Enable PWM
 //    }
     
-//    // Compare target current with actual measured current
+//    // Compare target current with actual measured current HCW*** not use now
 //    if (target_current > current_RMS_mA) {
 //      Increase_PWM_Width(1); 
 //    } else {
 //      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
-//    }
-    
-//    // Bug fix: prevent simultaneous PW0D access from main loop and ISR HCW***
-//    if( f_jitter_active != 0) {
-//      return; 
 //    }
     
     // Compare target power with actual measured current_power
@@ -278,9 +291,10 @@ void Power_Control(void)
     } else {
       PW0D_delta_req_pwr_ctrl = -1;
     }
-    PWM_INTERRUPT_ENABLE;         // enable PWM ISR
+    PWM_INTERRUPT_ENABLE;   // Enable PWM ISR
     
 }
+
 
 void PWM_Request_Reset(void)
 {
@@ -340,14 +354,13 @@ void Pot_Detection() {
       // 重啟檢鍋間隔計時器
       cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POT_CHECK_INTERVAL);
         
-      // **如果鍋具存在，轉入 `POT_ANALYZING`**
       if (pot_pulse_cnt < POT_PULSE_THRESHOLD) {
         f_pot_detected = 1;
         
         //pot_detection_state = POT_ANALYZING;
         //f_pot_analyzed = 0;
         //Pot_Analyze();
-      } else {  // **鍋具不存在，保持在 `POT_IDLE`，下次重新檢測**
+      } else {
         //pot_detection_state = POT_IDLE;
         f_pot_detected = 0;
         error_flags.f.Pot_missing = 1;  // Raise missing pot flag
@@ -407,40 +420,16 @@ void Pot_Detection_In_Heating(void)
     }
   }
   
-//   Old approach   
-    // 僅在加熱狀態下執行檢鍋任務
-//    if (system_state != HEATING) {
-//        return; // 非 HEATING 狀態時直接返回
-//    }
-
-//    if (current_IIR_new < POT_CURRENT_THRESHOLD) {
-//        // 電流低於門檻
-//        if (!f_current_pot_checking) {
-//            // 若未開始倒數，啟動倒數
-//            cntdown_timer_start(CNTDOWN_TIMER_POT_CHECK, POT_CHECK_DELAY_MS);
-//            f_current_pot_checking = 1; // 設置為正在倒數中
-//        } else if (cntdown_timer_expired(CNTDOWN_TIMER_POT_CHECK)) {
-//            // 若倒數完成，判定鍋具不存在
-//            f_current_pot_checking = 0; // 清除倒數旗標
-//            f_pot_detected = 0;        // 鍋具不存在
-//            system_state = STANDBY;    // 切換系統狀態為待機
-//        }
-//    } else {
-//        // 電流恢復正常
-//        f_current_pot_checking = 0; // 清除倒數旗標
-//        cntdown_timer_start(CNTDOWN_TIMER_POT_CHECK, 0); // 停止計時器
-//    }
-
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define POT_ANALYZE_POWER   1000000   // 1000 000mW
-#define DEFAULT_1000W_PW0D_VAL  320   // PWM 寬度 320cnt @32MHz = 10us
-#define POWER_STABILITY_THRESHOLD  50000  // 50 000mW  
-#define POWER_STABLE_TIME       1000   // 1000ms
-#define POWER_SAMPLE_INTERVAL   100    // 100ms  
+// HCW*** Cancel the pot analysis process.
 
-// HCW**Cancel the pot analysis process.
+//#define POT_ANALYZE_POWER         1000000 // 1000 000mW
+//#define DEFAULT_1000W_PW0D_VAL    320     // PWM 寬度 320cnt @32MHz = 10us
+//#define POWER_STABILITY_THRESHOLD 50000   // 50 000mW  
+//#define POWER_STABLE_TIME         1000    // 1000ms
+//#define POWER_SAMPLE_INTERVAL     100     // 100ms  
 
 //PotAnalyzeState pot_analyze_state = PWR_UP;
 
@@ -520,9 +509,9 @@ void Pot_Detection_In_Heating(void)
 //}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define AC_PERIOD_COUNT 4  // 取 4 次週期平均
-#define DEBOUNCE_TICKS 2   // 軟體 debounce 時間 (2 * 125us = 250us)
-#define PRE_CLEAR_DEBOUNCE_COUNT 3  // 清除中斷前需要 3 次連續確認 HIGH
+#define AC_PERIOD_COUNT 4   // 取 4 次週期平均
+#define DEBOUNCE_TICKS  2   // 軟體 debounce 時間 (2 * 125us = 250us)
+#define PRE_CLEAR_DEBOUNCE_COUNT    3  // 清除中斷前需要 3 次連續確認 HIGH
 #define PRE_CLEAR_DEBOUNCE_INTERVAL 2  // 每 1 個 `system_ticks` 確認一次 (250us)
 
 uint8_t idata ac_low_periods[AC_PERIOD_COUNT] = {0};  // 記錄最近 4 次 AC 週期時間
@@ -533,28 +522,14 @@ void Measure_AC_Low_Time(void) {
     uint8_t i;
     uint8_t sum = 0;
     uint8_t start_ticks;
-//  uint8_t low_count;
-
-//    // **等待中斷發生**           // It’s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM1_ISR, 
+  
+//    // Wait ISR_f_CM3_AC_sync         // HCW*** It’s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM3_ISR, 
 //    while (ISR_f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC’s rising edge.
   
     // 等待 AC 訊號穩定，收集 4 次數據
     for (i = 0; i < AC_PERIOD_COUNT; i++) {
-      
-//      // 軟體 debounce：確保 CM3 真的回到 LOW，ISR_f_CM3_AC_sync
-//      low_count = 0;
-//      while (low_count < PRE_CLEAR_DEBOUNCE_COUNT) {
-//        debounce_start = system_ticks;
-//        while ((system_ticks - debounce_start) < PRE_CLEAR_DEBOUNCE_INTERVAL); // 等待 `250us`
-//        
-//        if ((CMOUT & mskCM3OUT) == 0) {
-//            low_count++;
-//        } else {
-//            low_count = 0;  // 若 `CM1` 變 LOW，則重新計算
-//        }
-//      }
-      
-      ISR_f_CM3_AC_sync = 0;  // **清除中斷標誌**
+     
+      ISR_f_CM3_AC_sync = 0;  // clear ISR_f_CM3_AC_sync
 
       // **等待中斷發生**
       while (ISR_f_CM3_AC_sync == 0);
@@ -582,14 +557,14 @@ void Measure_AC_Low_Time(void) {
     if ((ac_half_low_ticks_avg>16) || (ac_half_low_ticks_avg<4))
     {ac_half_low_ticks_avg = 6;}
     
-    ac_half_low_ticks_avg += 3;   // special modify for not symmetry divider circuit.
+    ac_half_low_ticks_avg += 4;   // special modify for not symmetry divider circuit.
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define AC_FREQUENCY_SAMPLES 4   // 取 4 次測量平均
-#define AC_60HZ_THRESHOLD  73    // 60Hz 判斷門檻（73 system_ticks）
+#define AC_FREQUENCY_SAMPLES  4   // Number of measurements to average
+#define AC_60HZ_THRESHOLD     73  // 60Hz threshold （73 system_ticks）
 
-bit f_AC_50Hz = 0; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**
+bit f_AC_50Hz = 0; // AC frequency flag: 1 = 50Hz, 0 = 60Hz
 uint8_t xdata ac_ticks[AC_FREQUENCY_SAMPLES];
 
 void Detect_AC_Frequency(void) {
@@ -597,27 +572,29 @@ void Detect_AC_Frequency(void) {
     uint16_t sum = 0;
     uint8_t start_tick, elapsed_ticks;
 
+    // clear the sync flag before starting measurements
     ISR_f_CM3_AC_sync = 0;
   
     for (i = 0; i < AC_FREQUENCY_SAMPLES; i++) {
-        // **等待 ISR_f_CM3_AC_sync 立起**
+        // wait for the new ISR_f_CM3_AC_sync
         while (!ISR_f_CM3_AC_sync);
-        ISR_f_CM3_AC_sync = 0;  // **清除標誌**
+        ISR_f_CM3_AC_sync = 0;  // clear flag
         
-        // **記錄開始時間**
+        // record the start time
         start_tick = system_ticks;
 
-        // **等待下一次 ISR_f_CM3_AC_sync 立起**
+         // wait for the next ISR_f_CM3_AC_sync
         while (!ISR_f_CM3_AC_sync);
-        ISR_f_CM3_AC_sync = 0;  // **清除標誌**
+        ISR_f_CM3_AC_sync = 0;  // clear flag
         
-        // **計算經過的 ticks**
+        // compute elapsed ticks between ISR_f_CM3_AC_sync
         elapsed_ticks = system_ticks - start_tick;
-        ac_ticks[i] = elapsed_ticks;  // **存入 xdata 陣列**
+        ac_ticks[i] = elapsed_ticks;
+      
         WDTR = 0x5A; // Clear watchdog
     }
 
-    // **計算 4 次測量的平均值**
+    // calculate the average tick count
     for (i = 0; i < AC_FREQUENCY_SAMPLES; i++) {
         sum += ac_ticks[i];
     }
@@ -632,6 +609,7 @@ void Detect_AC_Frequency(void) {
         f_AC_50Hz = (sum >= AC_60HZ_THRESHOLD) ? 1 : 0;
     #endif
     
+    // set measurements per AC cycle based on detected frequency
     measure_per_AC_cycle = (f_AC_50Hz) ? MEASUREMENTS_PER_50HZ : MEASUREMENTS_PER_60HZ;
     
 }
@@ -642,8 +620,8 @@ void Detect_AC_Frequency(void) {
 
 ErrorFlags error_flags = {0};
 WarningFlags warning_flags = {0};
-volatile uint8_t Surge_Overvoltage_Flag = 0;
-volatile uint8_t Surge_Overcurrent_Flag = 0;
+volatile bit ISR_f_Surge_Overvoltage_error = 0;
+volatile bit ISR_f_Surge_Overcurrent_error = 0;
 
 void Error_Process(void)
 {
@@ -651,7 +629,8 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if (Surge_Overvoltage_Flag || Surge_Overcurrent_Flag || error_flags.all_flags) {
+    if ( ISR_f_Surge_Overvoltage_error || ISR_f_Surge_Overcurrent_error || ISR_f_I2C_error || error_flags.all_flags ) 
+    {
       system_state = ERROR;
       
       error_clear_time_1s = system_time_1s;  // Record the current time
@@ -664,13 +643,13 @@ void Error_Process(void)
       //pot_analyze_state = PWR_UP; // HCW**Cancel the pot analysis process.
       
       // Set I2C status code based on error type
-      if (Surge_Overvoltage_Flag) {
+      if (ISR_f_Surge_Overvoltage_error) {
           i2c_status_code = I2C_STATUS_OVERVOLTAGE;
-      } else if (Surge_Overcurrent_Flag) {
+      } else if (ISR_f_Surge_Overcurrent_error) {
           i2c_status_code = I2C_STATUS_OVERCURRENT;
-      } else if (error_flags.f.IGBT_overheat) {
+      } else if (error_flags.f.IGBT_overheat) {  //HCW***
           i2c_status_code = I2C_STATUS_IGBT_OVERHEAT;
-      } else {
+      } else if (error_flags.all_flags){
           i2c_status_code = I2C_STATUS_OTHER_ERROR;
       }
     }
@@ -678,16 +657,16 @@ void Error_Process(void)
   }
 
   // Check if Surge Overvoltage has recovered
-  if (Surge_Overvoltage_Flag) {
+  if (ISR_f_Surge_Overvoltage_error) {
       if (CMOUT & mskCM1OUT) {  // If CM1OUT returns to 1, voltage is back to normal
-          Surge_Overvoltage_Flag = 0;
+          ISR_f_Surge_Overvoltage_error = 0;
       }
   }
   
   // Check if Surge Overcurrent has recovered
-  if (Surge_Overcurrent_Flag) {
+  if (ISR_f_Surge_Overcurrent_error) {
       if (CMOUT & mskCM4OUT) {  // If CM4OUT returns to 1, current is back to normal
-          Surge_Overcurrent_Flag = 0;
+          ISR_f_Surge_Overcurrent_error = 0;
       }
   }
   
@@ -695,9 +674,14 @@ void Error_Process(void)
   if (error_flags.f.Pot_missing) {
     error_flags.f.Pot_missing = 0;
   }
+  
+  // Clear ISR_f_I2C_error flag after entering ERROR state
+  if (ISR_f_I2C_error) {
+    ISR_f_I2C_error = 0;
+  }
 
   // If any error flags are still active, update the error_clear_time_1s and return
-  if (Surge_Overvoltage_Flag || Surge_Overcurrent_Flag || error_flags.all_flags) {
+  if (ISR_f_Surge_Overvoltage_error || ISR_f_Surge_Overcurrent_error || ISR_f_I2C_error || error_flags.all_flags) {
       error_clear_time_1s = system_time_1s;  // Record the current time
       return;
   }

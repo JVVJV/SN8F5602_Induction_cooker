@@ -91,14 +91,14 @@ typedef enum {
 #define CNTDOWN_TIMER_I2C                         3 // I2C 計時器 ID
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile bit f_125us;
+extern volatile bit ISR_f_125us;
 extern volatile uint8_t system_ticks;
 extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;
 extern WarningFlags warning_flags;
-extern volatile uint8_t Surge_Overvoltage_Flag; // By CM1
-extern volatile uint8_t Surge_Overcurrent_Flag; // By CM4
+extern volatile bit ISR_f_Surge_Overvoltage_error; // By CM1
+extern volatile bit ISR_f_Surge_Overcurrent_error; // By CM4
 
 extern SystemState system_state;
 extern uint32_t power_setting;
@@ -115,7 +115,7 @@ extern uint16_t recorded_1000W_PW0D;
 extern uint8_t ac_half_low_ticks_avg;
 
 extern volatile char PW0D_delta_req_pwr_ctrl;
-extern volatile uint8_t PW0D_lock;
+extern volatile bit PW0D_lock;
 
 extern bit f_pot_detected;
 extern bit f_AC_50Hz; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**

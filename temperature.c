@@ -13,6 +13,7 @@
 #include "config.h"
 #include "ADC.h"
 #include "system.h"
+#include "buzzer.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define TEMP_ACCUMULATE_COUNT 8
@@ -119,13 +120,13 @@ void Temp_Measure(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // IGBT temperature error threshold
-#define IGBT_TEMP_UPPER_LIMIT  70   // IGBT 溫度上限 (攝氏度) 70
-#define IGBT_TEMP_RECOVERY     60   // IGBT Overheat recovery threshold 60
+#define IGBT_TEMP_UPPER_LIMIT  110  // IGBT 溫度上限 (攝氏度) 110
+#define IGBT_TEMP_RECOVERY     80   // IGBT Overheat recovery threshold 80
 #define IGBT_TEMP_LOWER_LIMIT -20   // IGBT 溫度下限 (攝氏度)
 
 // Warning temperature threshold before reaching overheat
-#define IGBT_TEMP_WARNING_LIMIT      60    // Start of heat warning zone
-#define IGBT_TEMP_WARNING_RECOVERY   55    // Heat warning recovery threshold
+#define IGBT_TEMP_WARNING_LIMIT      55  // Start of heat warning zone        HCW***
+#define IGBT_TEMP_WARNING_RECOVERY   50  // Heat warning recovery threshold   HCW***
 
 // IGBT temperature error threshold
 #define TOP_TEMP_UPPER_LIMIT  180   // TOP 溫度上限 (單位：適當的測量單位，例如攝氏度)
@@ -165,10 +166,16 @@ void Temp_Process(void)
       error_flags.f.IGBT_sensor_fault = 0;
     }
     
-    // Heat warning zone
+    // Heat warning zone and fan control
     if (IGBT_TEMP_C > IGBT_TEMP_WARNING_LIMIT) {
+      if (!warning_flags.f.IGBT_heat_warning) { 
+        Fan_SetFullSpeed(); 
+      }
       warning_flags.f.IGBT_heat_warning = 1;
     } else if (IGBT_TEMP_C < IGBT_TEMP_WARNING_RECOVERY) {
+      if (warning_flags.f.IGBT_heat_warning) { 
+        Fan_SetNormalSpeed(); 
+      }
       warning_flags.f.IGBT_heat_warning = 0;
     }
     

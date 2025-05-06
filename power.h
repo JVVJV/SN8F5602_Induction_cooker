@@ -46,6 +46,7 @@ extern uint8_t level;
 extern uint8_t periodic_AC_sync_cnt;
 extern PeriodicHeatState periodic_heat_state;
 extern FrequencyJitterState Frequency_jitter_state;
+extern volatile uint8_t jitter_adjust_cnt;
 extern bit f_jitter_active;
 
 /*_____ M A C R O S ________________________________________________________*/

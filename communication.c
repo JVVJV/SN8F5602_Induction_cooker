@@ -27,10 +27,16 @@ uint8_t i2c_status_code = I2C_STATUS_NORMAL;  // default normal status
 void I2C_Communication(void) {
     static bit f_i2c_transaction_type = 1; // **0: Read, 1: Write**
     static uint8_t i2c_buffer[I2C_BUFFER_SIZE];
+    static uint8_t i2c_comm_fail_count = 0; 
 
     if (cntdown_timer_expired(CNTDOWN_TIMER_I2C)) {
-      if (f_i2c_power_received) {
-        f_i2c_power_received = 0;
+      // Restart 43 ms countdown
+      cntdown_timer_start(CNTDOWN_TIMER_I2C, I2C_INTERVAL);
+      
+      if (ISR_f_i2c_power_received) {
+        ISR_f_i2c_power_received = 0;
+        i2c_comm_fail_count = 0;  // Reset failure counter
+        
         switch (i2c_buffer[0]) {
           case 0x00: power_setting = 0; break;
           case 0x44: power_setting = 200000; break;
@@ -41,25 +47,27 @@ void I2C_Communication(void) {
           case 0x4C: power_setting = 1600000; break;
           case 0x4D: power_setting = 1800000; break;
           case 0x4E: power_setting = 2000000; break;
-          case 0x4F: power_setting = 2200000; break;
-          default:   power_setting = 0;       break; // **如果數據無效
-        } 
-      }        
-      
-      if (f_i2c_transaction_type) {
-            // **準備 NTC 資料**
-            i2c_buffer[0] = i2c_status_code;
-            i2c_buffer[1] = (uint8_t)TOP_TEMP_C;
-            I2C_Write(I2C_SLAVE_ADDRESS, i2c_buffer, 2);
-        } else {
-            I2C_Read(I2C_SLAVE_ADDRESS, i2c_buffer, 2); // **讀取功率**
+          case 0x4F: power_setting = 2000000; break; // HCW*** not support 2.2KW
+          default:   power_setting = 0;       break; // Invalid data
         }
+      } else {
+        // No response: count failures and reinit after 6
+        if (++i2c_comm_fail_count >= 6) {
+            i2c_comm_fail_count = 0;
+            I2C_Init();
+        }
+      }
+      
+      // Alternate between write (NTC) and read (power)
+      if (f_i2c_transaction_type) {
+          i2c_buffer[0] = i2c_status_code;
+          i2c_buffer[1] = (uint8_t)TOP_TEMP_C;
+          I2C_Write(I2C_SLAVE_ADDRESS, i2c_buffer, 2);
+      } else {
+          I2C_Read(I2C_SLAVE_ADDRESS, i2c_buffer, 2);
+      }
 
-        f_i2c_transaction_type = !f_i2c_transaction_type; // **交替讀/寫**
-        
-
-        // **重新啟動 43ms 計時**
-        cntdown_timer_start(CNTDOWN_TIMER_I2C, I2C_INTERVAL);
+      f_i2c_transaction_type = !f_i2c_transaction_type;
     }
 }
 

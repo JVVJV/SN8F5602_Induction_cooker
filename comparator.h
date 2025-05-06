@@ -87,6 +87,23 @@
 #define CM2_RISING_TRIGGER    (1<<3)
 #define CM2_FALLING_TRIGGER   (0<<3)
 // CMDB2
+#define CM2_DEBOUNCE_0FCPU      (0<<0)
+#define CM2_DEBOUNCE_2FCPU      (1<<0)
+#define CM2_DEBOUNCE_4FCPU      (2<<0)
+#define CM2_DEBOUNCE_6FCPU      (3<<0)
+#define CM2_DEBOUNCE_8FCPU      (4<<0)
+#define CM2_DEBOUNCE_10FCPU     (5<<0)
+#define CM2_DEBOUNCE_12FCPU     (6<<0)
+#define CM2_DEBOUNCE_14FCPU     (7<<0)
+#define CM2_DEBOUNCE_16FCPU     (8<<0)
+#define CM2_DEBOUNCE_18FCPU     (9<<0)
+#define CM2_DEBOUNCE_20FCPU     (10<<0)
+#define CM2_DEBOUNCE_22FCPU     (11<<0)
+#define CM2_DEBOUNCE_24FCPU     (12<<0)
+#define CM2_DEBOUNCE_26FCPU     (13<<0)
+#define CM2_DEBOUNCE_28FCPU     (14<<0)
+#define CM2_DEBOUNCE_30FCPU     (15<<0)
+
 
 // CM2REF
 #define CM2REF_VDD      (0<<7)
@@ -153,7 +170,6 @@
 #define CM4REF_VDD      (0<<7)
 #define CM4REF_INTREF   (1<<7)
 
-
 // CMOUT
 #define mskCM4OUT     (1<<4)
 #define mskCM3OUT     (1<<3)
@@ -182,19 +198,17 @@
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile uint8_t PW0D_req_CMP2_isr ;
-
-extern volatile uint8_t ISR_f_CM3_AC_sync;
-extern volatile uint8_t ISR_f_CM3_AC_Zero_sync;
-extern volatile uint8_t CM3_AC_sync_cnt;
+extern volatile bit PW0D_req_CMP2_isr ;
+extern volatile bit ISR_f_CM3_AC_sync;
+extern volatile bit ISR_f_CM3_AC_Zero_sync;
+extern volatile bit ISR_f_CM3_AC_Periodic_sync;
 extern volatile uint8_t CM3_last_sync_tick;
 
-
 /*_____ M A C R O S ________________________________________________________*/
-#define CM0_IRQ_ENABLE  IEN2 |= mskECMP0
-#define CM0_IRQ_DISABLE IEN2 &= (~mskECMP0)
+#define CM0_IRQ_ENABLE      IEN2 |= mskECMP0
+#define CM0_IRQ_DISABLE     IEN2 &= (~mskECMP0)
 
-#define CLEAR_CM0_IRQ_FLAG IRCON2 &= (~mskCM0F)
+#define CLEAR_CM0_IRQ_FLAG  IRCON2 &= (~mskCM0F)
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Comparator_Init(void);

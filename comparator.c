@@ -7,6 +7,10 @@
 * REVISION		Date				User		Description
 *____________________________________________________________________________
 *****************************************************************************/
+/**
+ * @file comparator.c
+ * @brief Comparator initialization and ISRs for surge and AC sync handling.
+ */
 
 /*_____ I N C L U D E S ____________________________________________________*/
 #include "comparator.h"
@@ -17,58 +21,68 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
-
 /*_____ D E F I N I T I O N S ______________________________________________*/
-
 
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
-
+/**
+ * @brief Initialize comparators CM0~CM4 and internal reference voltage.
+ *
+ * Configures pin modes, thresholds, debouncing, triggers, and enables interrupts
+ * for five comparators:
+ * - CM0: PWM pulse trigger
+ * - CM1: AC overvoltage surge protection
+ * - CM2: IGBT overvoltage protection
+ * - CM3: AC zero-cross synchronization
+ * - CM4: Current overcurrent surge protection
+ */
 void Comparator_Init(void)
 {
-  // CM0 -------------------------------------------------------
+  // ------------------------------------------------------------------------
+  // CM0: PWM pulse trigger
+  // ------------------------------------------------------------------------
   CM0M = 0;
   // P02, P03 switch to analog pin
   P0CON |= (1<<3)|(1<<2); 
   
   CM0M = CM0_FALLING_TRIGGER | CM0_CLK_FCPU;
-  CMDB0 = DELAY_4T | DEBOUNCE_10FCPU;
-  
+  CMDB0 = DELAY_4T | DEBOUNCE_16FCPU;
   CM0M |= mskCM0EN;
   
-  // INTERNAL REFERENCE VOLTAGE -------------------------------------------------------
+  // ------------------------------------------------------------------------
+  // Internal Reference Voltage
+  // ------------------------------------------------------------------------
   INTREF = mskINTREFEN | INTREF3V5;
   
-  // CM1 -------------------------------------------------------
-  // AC Power surge protection @260 Vrms
-  // Protection voltage is 260V RMS (peak 367V), 
+  // ------------------------------------------------------------------------
+  // CM1: AC overvoltage surge protection (@260 Vrms)
+  // ------------------------------------------------------------------------
+  // Protection voltage is 260V RMS (peak 367V) 
   // with a resistor divider ratio of 0.0049, resulting in 1.8V.
   
   // After the induction cooker begins operation, the GND potential shifts upward & down, so we need an increase in the voltage surge detection threshold.
   // For this prototype circuit, an upward adjustment of 225mV is required
   CM1M = 0;
   
-  // CM1N
-  // P04 switch to analog pin
+  // CM1N, P04 switch to analog pin
   P0CON |= (1<<4); 
   
   // CM1P
-  // 設定 CM1+ 端為內部參考電壓 1.8V + 0.225V = 2.025V
+  // Set CM1+ internal-reference 1.8V + 0.225V = 2.025V
   // INTERNAL 3.5V*37/64 = 2.023V-> CM1RS = 37
   CM1REF = CM1REF_INTREF | 37;
   
   CMDB1 = CM1_DEBOUNCE_10FCPU; // 0.625us
-  
   CM1M = mskCM1EN | mskCM1SF |CM1_FALLING_TRIGGER;
-  
   IEN2 |= mskECMP1;
   
-  // CM2 -------------------------------------------------------
-  // IGBT overvoltage protect @1050V (AC power High or Pot be taken off)
+  
+  // ------------------------------------------------------------------------
+  // CM2: IGBT overvoltage protection (@1050V) (AC power High or Pot be taken off)
+  // ------------------------------------------------------------------------
   CM2M = 0;
-  // CM2N
-  // P05 switch to analog pin
+  // CM2N, P05 switch to analog pin
   P0CON |= (1<<5);  
   
   // CM2P
@@ -80,12 +94,14 @@ void Comparator_Init(void)
   //CM2REF = CM2REF_INTREF | 44;  //800V
   //CM2REF = CM2REF_INTREF | 50;  //900V
   
-  CM2M = mskCM2EN |CM2_FALLING_TRIGGER; // Disable CM2SF HCW**
- 
+  CMDB2 = CM2_DEBOUNCE_8FCPU; // 0.5us
+  CM2M = mskCM2EN |CM2_FALLING_TRIGGER; // Disable CM2SF HCW***
   IEN2 |= mskECMP2;
   
-  // CM3 -------------------------------------------------------
-  // AC Power Sync.
+  
+  // ------------------------------------------------------------------------
+  // CM3: AC power synchronization
+  // ------------------------------------------------------------------------
   CM3M = 0;
   
   // CM3P
@@ -100,15 +116,12 @@ void Comparator_Init(void)
   //CM3REF = CM3REF_INTREF | 1; // 54mV
   
   CMDB3 = CM3_DEBOUNCE_20FCPU;
-  
   CM3M = mskCM3EN | CM3_FALLING_TRIGGER;
-  
   IEN2 |= mskECMP3;
   
-  // CM4 -------------------------------------------------------
-  // Current Surge Protection 
-  // Configured for around 10 A
-  
+  // ------------------------------------------------------------------------
+  // CM4: Current overcurrent surge protection (~10A)
+  // ------------------------------------------------------------------------
   // For the prototype, the amplification ratio is approximately 47K/1.25K = 37.6x. With a 10A current + 0.01Ω constantan wire, the output is:
   // 0.1V × 37.6 = 3.76V. Adding the OP offset base current (~0.385V), 
   // the total becomes:3.76V + 0.385V = 4.14V
@@ -133,12 +146,17 @@ void Comparator_Init(void)
   //CM4REF = CM4REF_VDD | 61; 
   
   CMDB4 = CM4_DEBOUNCE_8FCPU; // 0.5us
-  
   CM4M = mskCM4SF | CM4_FALLING_TRIGGER | CM4N_OPO;
-  
   IEN2 |= mskECMP4;
 }
 
+
+/**
+ * @brief Adjust comparator 4 threshold for op-amp trim variation and enable.
+ *
+ * This function should compute the needed adjustment based on measured base current
+ * vs. the default, then set CM4REF accordingly and enable CM4.
+ */
 void Surge_Protection_Modify(void)
 {
   // Since the op-amp's trim value is reduced by 6 (due to die-to-die variations), 
@@ -152,19 +170,26 @@ void Surge_Protection_Modify(void)
 }
 
 
+/**
+ * @brief ISR for comparator 0: PWM pulse trigger event.
+ */
 void comparator0_ISR(void) interrupt ISRCmp0
 {
   if(pot_pulse_cnt < 250)
   {
-    pot_pulse_cnt++; // 每次中斷觸發，脈衝計數器自增
+    pot_pulse_cnt++;
   }    
   
 }
 
+
+/**
+ * @brief ISR for comparator 1: handle AC overvoltage event.
+ */
 void comparator1_ISR(void) interrupt ISRCmp1
 {  
-  // 當 CM1 觸發中斷，代表電壓浪湧發生，立起 Surge_Overvoltage_Flag
-  Surge_Overvoltage_Flag  = 1;
+  //Raise overvoltage flag
+  ISR_f_Surge_Overvoltage_error  = 1;
   
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin
@@ -173,11 +198,15 @@ void comparator1_ISR(void) interrupt ISRCmp1
 }
 
 
-// Raise CMP2 PW0D adjustment request flag.
-// Do NOT modify PW0D directly here to avoid race conditions with main/PWM0_ISR. (IC_BUG)
-// The actual PW0D adjustment will be handled safely by either PWM0_ISR or Power_Control().
-
-volatile uint8_t PW0D_req_CMP2_isr  = 0;
+/**
+ * @brief ISR for comparator 2: request PW0D decrease for HV protection.
+ *
+ * Marks a request flag instead of directly adjusting PW0D to avoid race conditions.
+ * Raise CMP2 PW0D adjustment request flag.
+ * Do NOT modify PW0D directly here to avoid race conditions with main/PWM0_ISR. (IC_BUG)
+ * The actual PW0D adjustment will be handled safely by either PWM0_ISR or Power_Control().
+ */
+volatile bit PW0D_req_CMP2_isr  = 0;
 
 void comparator2_ISR(void) interrupt ISRCmp2
 {  
@@ -190,7 +219,10 @@ void comparator2_ISR(void) interrupt ISRCmp2
   }
 }
 
-#define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
+
+/**
+ * @brief ISR for comparator 3: AC zero-cross debounce and flag set.
+ */
 /*
    AC_SYNC_DEBOUNCE_TICKS is used to ensure that `ISR_f_CM3_AC_sync` is only triggered at the start of a new AC cycle:
    1. When `CM3+` is lower than `CM3-` (0.5V), `CM3_ISR` will be triggered, but there may be signal jitter.
@@ -198,27 +230,33 @@ void comparator2_ISR(void) interrupt ISRCmp2
    3. `ISR_f_CM3_AC_sync` is only allowed to be triggered again after `AC_SYNC_DEBOUNCE_TICKS`, preventing jitter from affecting the timing accuracy.
 */
 
-volatile uint8_t ISR_f_CM3_AC_sync = 0;
-volatile uint8_t ISR_f_CM3_AC_Zero_sync = 0;
-volatile uint8_t CM3_AC_sync_cnt = 0;
+#define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
+
+volatile bit ISR_f_CM3_AC_sync = 0;
+volatile bit ISR_f_CM3_AC_Zero_sync = 0;
+volatile bit ISR_f_CM3_AC_Periodic_sync = 0;
 volatile uint8_t CM3_last_sync_tick = 0; // Record the time when `ISR_f_CM3_AC_sync` was set to `1`
 
 void comparator3_ISR(void) interrupt ISRCmp3
 {
   // **Ensure that `ISR_f_CM3_AC_sync` is only triggered within a new AC cycle**
   if ((uint8_t)(system_ticks - CM3_last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
-    ISR_f_CM3_AC_sync = 1;       // **Mark the start of a new AC cycle**
+    ISR_f_CM3_AC_sync = 1;
     ISR_f_CM3_AC_Zero_sync = 1;
+    ISR_f_CM3_AC_Periodic_sync = 1;
     
-    CM3_AC_sync_cnt++;
     CM3_last_sync_tick = system_ticks; // **Update `last_sync_tick`**
   }
 }
 
+
+/**
+ * @brief ISR for comparator 4: handle current overcurrent event.
+ */
 void comparator4_ISR(void) interrupt ISRCmp4
 {  
-  // 當 CM4 觸發中斷，代表電流浪湧發生，立起 Surge_Overcurrent_Flag
-  Surge_Overcurrent_Flag  = 1;
+  // Raise overcurrent flag
+  ISR_f_Surge_Overcurrent_error  = 1;
   
   // In interrupt, simply stop the heating logic
   P01 = 1;  //PWM Pin

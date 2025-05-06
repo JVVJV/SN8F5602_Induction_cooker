@@ -4,9 +4,7 @@
 /*_____ I N C L U D E S ____________________________________________________*/
 #include <SN8F5602.h>
 
-
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 // PW0M
@@ -42,7 +40,6 @@
 #define mskPW0F         (1<<2)
 
 
-
 /*_____ M A C R O S ________________________________________________________*/
 #define PWM_INTERRUPT_ENABLE    IEN3 |= mskEPW0;
 #define PWM_INTERRUPT_DISABLE   IEN3 &= ~mskEPW0;
@@ -51,8 +48,5 @@
 /*_____ F U N C T I O N S __________________________________________________*/
 void PWM_Init(void);
 
-
-extern volatile uint16_t PW0D_val_ISR;
-extern volatile uint16_t PW0D_val_main;
 
 #endif  // __PWM_H__

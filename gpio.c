@@ -33,7 +33,7 @@ void GPIO_Init(void)
   // P06 No sue     | OUT L
   // P07 No sue     | OUT L
   P0 = (1<<1);  // P01 H (P01 always output)
-  P0M = (1<<7)|(1<<6)|(1<<0); //HCW** P00 debug
+  P0M = (1<<7)|(1<<6)|(1<<0);
   P0CON = (1<<5)|(1<<4)|(1<<3)|(1<<2);  //P02 P03 P04 P05
   
   // P10 No sue     | Out L

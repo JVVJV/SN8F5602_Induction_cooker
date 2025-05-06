@@ -53,6 +53,6 @@ void Timer0_Init() {
 // Timer0 中斷服務程式
 void Timer0_ISR() interrupt ISRTimer0
 {
-    system_ticks++;  // 增加 125 μs 計數
-    f_125us = 1;  // 立起 125 μs 旗標
+    system_ticks++;   // 增加 125 μs 計數
+    ISR_f_125us = 1;      // 立起 125 μs 旗標
 }

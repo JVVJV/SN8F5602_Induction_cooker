@@ -24,7 +24,7 @@
 void ADC_Init(void)
 {
   ADM = 0;
-  // 32MHz/4 * 16T = 0.5MHz 
+  // 32MHz/2 * 16T = 1MHz 
   ADR = ADC_CLK_HOSC | mskGCHS;
   VREFH = VREF_INTERNAL | VREF_VDD;
   ADCAL = SAMPLE_3T5 | ADC_CLK_DIV2;
