@@ -66,12 +66,10 @@ void ADC_measure_4_avg(uint8_t channel, uint16_t *result);
 /*_____ I N C L U D E S ____________________________________________________*/
 #include <SN8F5602.h>
 
-
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
-
 /*_____ D E F I N I T I O N S ______________________________________________*/
-// PW0M
+// BZM
 #define mskBZEN        (1<<7)
 #define BZ_RATE_512    (0<<4)
 #define BZ_RATE_1024   (1<<4)
@@ -82,15 +80,17 @@ void ADC_measure_4_avg(uint8_t channel, uint16_t *result);
 #define BZ_RATE_32768  (6<<4)
 #define BZ_RATE_65536  (7<<4)
 
-
 /*_____ M A C R O S ________________________________________________________*/
-#define BUZZER_ENABLE   BZM |= mskBZEN
-#define BUZZER_DISABLE   BZM &= (~mskBZEN)
+#define BUZZER_ENABLE     BZM |= mskBZEN
+#define BUZZER_DISABLE    BZM &= (~mskBZEN)
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Buzzer_Init(void);
+void Fan_Enable(void);
+void Fan_SetNormalSpeed(void);
+void Fan_SetFullSpeed(void);
 
-#endif  // __PWM_H__
+#endif  // __BUZZER_H__
 
 // === End of buzzer.h ===
 
@@ -301,7 +301,6 @@ void I2C_Communication(void);
 #define CM4REF_VDD      (0<<7)
 #define CM4REF_INTREF   (1<<7)
 
-
 // CMOUT
 #define mskCM4OUT     (1<<4)
 #define mskCM3OUT     (1<<3)
@@ -330,19 +329,17 @@ void I2C_Communication(void);
 #define mskCM0F     (1<<3)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile uint8_t PW0D_req_CMP2_isr ;
-
-extern volatile uint8_t ISR_f_CM3_AC_sync;
-extern volatile uint8_t ISR_f_CM3_AC_Zero_sync;
-extern volatile uint8_t CM3_AC_sync_cnt;
+extern volatile bit PW0D_req_CMP2_isr ;
+extern volatile bit ISR_f_CM3_AC_sync;
+extern volatile bit ISR_f_CM3_AC_Zero_sync;
+extern volatile bit ISR_f_CM3_AC_Periodic_sync;
 extern volatile uint8_t CM3_last_sync_tick;
 
-
 /*_____ M A C R O S ________________________________________________________*/
-#define CM0_IRQ_ENABLE  IEN2 |= mskECMP0
-#define CM0_IRQ_DISABLE IEN2 &= (~mskECMP0)
+#define CM0_IRQ_ENABLE      IEN2 |= mskECMP0
+#define CM0_IRQ_DISABLE     IEN2 &= (~mskECMP0)
 
-#define CLEAR_CM0_IRQ_FLAG IRCON2 &= (~mskCM0F)
+#define CLEAR_CM0_IRQ_FLAG  IRCON2 &= (~mskCM0F)
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Comparator_Init(void);
@@ -385,9 +382,8 @@ void Surge_Protection_Modify(void);
 // AC Frequency Mode Control
 #define AC_FREQ_MODE_FORCE_50HZ   0
 #define AC_FREQ_MODE_FORCE_60HZ   1
-
 // Select desired AC frequency mode here:
-#define AC_FREQ_MODE  AC_FREQ_MODE_FORCE_60HZ
+#define AC_FREQ_MODE  AC_FREQ_MODE_FORCE_50HZ
 
 
 #define CURRENT_ADC_CHANNEL       19  // OPO  定義系統電流量測的 ADC 通道 
@@ -398,23 +394,27 @@ void Surge_Protection_Modify(void);
 #define PERIODIC_TARGET_POWER     1000000 // 1000 000mW
 
 
-#define POT_DETECT_PULSE_TIME     192         // 設定 PW0D 數值為檢鍋用值 (6us)
+
 
 //#define PWM_MAX_WIDTH           960         // PWM 最大寬度   960cnt @32MHz = 30us
 //#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
-#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us
+//#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us
 //#define PWM_MAX_WIDTH           704         // PWM 最大寬度   704cnt @32MHz = 22us
-//#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
+#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
 //#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
 //#define PWM_MAX_WIDTH           417         // PWM 最大寬度   417cnt @32MHz = 13us
 //#define PWM_MAX_WIDTH           320         // PWM 最大寬度   320cnt @32MHz = 10us
 //#define PWM_MAX_WIDTH           256         // PWM 最大寬度   250cnt @32MHz = 8us
 
 
-#define PWM_MIN_WIDTH            224         // PWM 最小寬度   192cnt @32MHz = 7us
-                                             // This value should not be too small, as a smaller value 
-                                             // may increase the proportion of hard-switching operation, 
-                                             // leading to IGBT overheating.
+#define PWM_INIT_WIDTH          224         // PWM init_heating 224cnt @32MHz = 7us
+
+#define POT_DETECT_PULSE_TIME   192         // 設定 PW0D 數值為檢鍋用值 (6us)
+
+#define PWM_MIN_WIDTH           208         // PWM 最小寬度   208cnt @32MHz = 6.5us
+                                            // This value should not be too small, as a smaller value 
+                                            // may increase the proportion of hard-switching operation, 
+                                            // leading to IGBT overheating.
 
 #define	I2C_SLAVE_ADDRESS					0x55
 #define I2C_INTERVAL   43    // **I2C 操作間隔 43ms**
@@ -452,12 +452,6 @@ void GPIO_Init(void);
 #include <SN8F5602.h>
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
-#define SLAVE_SEL                 0
-#define MASTER_SEL                1
-
-#define I2C_R                     1
-#define I2C_W                     0
-
 #define	mskI2CCON_I2C_DIV_40			(0x00)
 #define	mskI2CCON_I2C_DIV_80			(0x01)
 #define	mskI2CCON_I2C_DIV_160			(0x02)
@@ -477,14 +471,14 @@ void GPIO_Init(void);
 
 #define	mskIEN1_INT_I2C									(0x01U<<0)
 
-
-#define	mskI2CMX    (1<<3)
+#define	mskI2CMX                        (1<<3)
 
 
 #define I2C_BUFFER_SIZE  3  // **最大緩衝區長度**
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile uint8_t ISR_f_i2c_power_received;   // **功率接收完成標誌**
+extern volatile bit ISR_f_i2c_power_received;
+extern volatile bit ISR_f_I2C_error;
 
 /*_____ M A C R O S ________________________________________________________*/
 #define I2C_PIN_SET_INPUT_0     P0M &= ~((0x01U<<6)|(0x01U<<7));  //SCL = P06,SDA = P07.
@@ -539,7 +533,6 @@ extern void ADC_init(void);
 /*_____ I N C L U D E S ____________________________________________________*/
 #include <SN8F5602.h>
 
-
 /*_____ D E F I N I T I O N S ______________________________________________*/
 // OPM
 #define OPN_IN_SHORT  (1<<7)
@@ -551,11 +544,8 @@ extern void ADC_init(void);
 
 /*_____ M A C R O S ________________________________________________________*/
 
-
 /*_____ F U N C T I O N S __________________________________________________*/
 void OP_Amp_Init(void);
-
-
 
 #endif  // __OP_H__
 // === End of OP_amp.h ===
@@ -609,6 +599,7 @@ extern uint8_t level;
 extern uint8_t periodic_AC_sync_cnt;
 extern PeriodicHeatState periodic_heat_state;
 extern FrequencyJitterState Frequency_jitter_state;
+extern volatile uint8_t jitter_adjust_cnt;
 extern bit f_jitter_active;
 
 /*_____ M A C R O S ________________________________________________________*/
@@ -634,9 +625,7 @@ void Frequency_jitter(void);
 /*_____ I N C L U D E S ____________________________________________________*/
 #include <SN8F5602.h>
 
-
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 // PW0M
@@ -672,7 +661,6 @@ void Frequency_jitter(void);
 #define mskPW0F         (1<<2)
 
 
-
 /*_____ M A C R O S ________________________________________________________*/
 #define PWM_INTERRUPT_ENABLE    IEN3 |= mskEPW0;
 #define PWM_INTERRUPT_DISABLE   IEN3 &= ~mskEPW0;
@@ -681,9 +669,6 @@ void Frequency_jitter(void);
 /*_____ F U N C T I O N S __________________________________________________*/
 void PWM_Init(void);
 
-
-extern volatile uint16_t PW0D_val_ISR;
-extern volatile uint16_t PW0D_val_main;
 
 #endif  // __PWM_H__
 
@@ -783,14 +768,14 @@ typedef enum {
 #define CNTDOWN_TIMER_I2C                         3 // I2C 計時器 ID
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-extern volatile bit f_125us;
+extern volatile bit ISR_f_125us;
 extern volatile uint8_t system_ticks;
 extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;
 extern WarningFlags warning_flags;
-extern volatile uint8_t Surge_Overvoltage_Flag; // By CM1
-extern volatile uint8_t Surge_Overcurrent_Flag; // By CM4
+extern volatile bit ISR_f_Surge_Overvoltage_error; // By CM1
+extern volatile bit ISR_f_Surge_Overcurrent_error; // By CM4
 
 extern SystemState system_state;
 extern uint32_t power_setting;
@@ -807,7 +792,7 @@ extern uint16_t recorded_1000W_PW0D;
 extern uint8_t ac_half_low_ticks_avg;
 
 extern volatile char PW0D_delta_req_pwr_ctrl;
-extern volatile uint8_t PW0D_lock;
+extern volatile bit PW0D_lock;
 
 extern bit f_pot_detected;
 extern bit f_AC_50Hz; // **AC 頻率標誌，1 = 50Hz，0 = 60Hz**

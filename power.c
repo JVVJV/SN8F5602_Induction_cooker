@@ -231,7 +231,7 @@ void Measure_Base_Current(void) {
 #define VOLTAGE_LOWER_LIMIT          170     // V 欠壓觸發
 #define VOLTAGE_RECOVER_LOW          180     // V 欠壓回復
 
-#define CURRENT_UPPER_LIMIT_mA      9600    // 9.6A = 9500 mA
+#define CURRENT_UPPER_LIMIT_mA      9600    // 9.6A = 9600 mA
 #define CURRENT_RECOVER_LIMIT_mA    9400   // 9.4A 過流回復
 
 //#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
@@ -636,7 +636,6 @@ void Zero_Crossing_Task(void)
     real_zero_cross_timer = 0;
 
     // Real_zero task
-    P10 = ~P10; //HCW**
     Start_Frequency_jitter();  // Execute zero-cross triggered function(s)
   }
 }

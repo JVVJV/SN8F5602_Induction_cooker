@@ -26,8 +26,8 @@
 #include "I2C.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
-#define SYSTEM_TICKS_PER_10MS 80    // 每 10 ms 的計數 (125 μs * 80 = 10 ms)
-#define SYSTEM_10MS_PER_SECOND 100  // 每秒包含的 10 ms 計數
+#define SYSTEM_TICKS_PER_10MS   80    // 每 10 ms 的計數 (125 μs * 80 = 10 ms)
+#define SYSTEM_10MS_PER_SECOND  100   // 每秒包含的 10 ms 計數
 
 TaskType current_task = TASK_HEAT_CONTROL;
 
@@ -147,7 +147,7 @@ void main (void)
       }
     } //(ISR_f_125us) end
     
-    // **間歇加熱模式：即時檢查 AC 訊號變化**
+    // Burst mode
     Periodic_Power_Control();
     
   } //while end

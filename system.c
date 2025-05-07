@@ -640,14 +640,14 @@ void Error_Process(void)
 
       // pot_detection & pot_analyze ini
       pot_detection_state = POT_IDLE;
-      //pot_analyze_state = PWR_UP; // HCW**Cancel the pot analysis process.
+      //pot_analyze_state = PWR_UP; // HCW** Cancel the pot analysis process.
       
       // Set I2C status code based on error type
       if (ISR_f_Surge_Overvoltage_error) {
           i2c_status_code = I2C_STATUS_OVERVOLTAGE;
       } else if (ISR_f_Surge_Overcurrent_error) {
           i2c_status_code = I2C_STATUS_OVERCURRENT;
-      } else if (error_flags.f.IGBT_overheat) {  //HCW***
+      } else if (error_flags.f.IGBT_overheat) {
           i2c_status_code = I2C_STATUS_IGBT_OVERHEAT;
       } else if (error_flags.all_flags){
           i2c_status_code = I2C_STATUS_OTHER_ERROR;
