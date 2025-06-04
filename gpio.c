@@ -30,19 +30,19 @@ void GPIO_Init(void)
   // P03 CM0N       | In
   // P04 CM1N       | In
   // P05 CM2N       | In
-  // P06 No sue     | OUT L
-  // P07 No sue     | OUT L
+  // P06 No use     | OUT L
+  // P07 No use     | OUT L
   P0 = (1<<1);  // P01 H (P01 always output)
   P0M = (1<<7)|(1<<6)|(1<<0);
   P0CON = (1<<5)|(1<<4)|(1<<3)|(1<<2);  //P02 P03 P04 P05
   
-  // P10 No sue     | Out L
+  // P10 No use     | Out L
   // P11 IGBTT      | In
   // P12 TOPT       | In
   // P13 SDA        | In
   // P14 SCL        | In
-  // P15 No sue     | Out L
-  // P16 No sue     | Out L
+  // P15 No use     | Out L
+  // P16 No use     | Out L
   P1 = 0;
   P1M = (1<<6)|(1<<5)|(1<<0);
   P1CON = (1<<2)|(1<<1);  //P12 P11
