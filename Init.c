@@ -23,7 +23,7 @@ void Sys_init(void)
 {
   //** Flosc clockcontrol by Code Option
   //** Fcpu clock control by Code Option
-  DEGCMD = 0x00;              //** 0xA5 = Enable OCDS module, ohters = Disable OCDS
+  DEGCMD = 0x00;              //** 0xA5 = Enable OCDS module, others = Disable OCDS
   
   P0 = 0x00;
   P0M = 0xFF;
