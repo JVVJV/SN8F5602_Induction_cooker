@@ -70,6 +70,11 @@ uint8_t I2C_Calculate_Checksum(uint8_t *databuf, uint8_t length) {
  * @param  length     Number of data bytes to send (excluding checksum).
  */
 void I2C_Write(uint8_t slave_addr, uint8_t *databuf, uint8_t length) {
+    // Prevent overflow, reserve space for checksum
+    if (length >= I2C_BUFFER_SIZE) {
+        length = I2C_BUFFER_SIZE - 1;  // Leave room for checksum
+    }
+    
     // Calculate and append checksum
     databuf[length] = I2C_Calculate_Checksum(databuf, length);
     length++;

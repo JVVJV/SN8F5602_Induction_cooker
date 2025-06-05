@@ -111,7 +111,7 @@ extern uint16_t current_RMS_mA;
 extern uint16_t voltage_RMS_V;
 extern uint16_t current_base;  // 存儲基準電流 ADC 值
 
-extern uint16_t recorded_1000W_PW0D;
+// extern uint16_t recorded_1000W_PW0D;
 extern uint8_t ac_half_low_ticks_avg;
 
 extern volatile char PW0D_delta_req_pwr_ctrl;

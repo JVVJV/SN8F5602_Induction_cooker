@@ -89,7 +89,7 @@ PBPSTACKTOP     EQU     0xFF +1     ; default 0FFH+1
 ;  <i>Define the XDATA page used for PDATA variables. 
 ;  <i>PPAGE must conform with the PPAGE set in the linker invocation.
 ;
-; Enable pdata memory page initalization
+; Enable pdata memory page initialization
 PPAGEENABLE     EQU     0       ; set to 1 if pdata object are used.
 ;
 ; <o> PPAGE number <0x0-0xFF> 
