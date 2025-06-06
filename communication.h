@@ -17,7 +17,8 @@
 #define I2C_STATUS_OVERVOLTAGE      0x71  // Surge: Over voltage
 #define I2C_STATUS_OVERCURRENT      0x72  // Surge: Over current
 #define I2C_STATUS_OTHER_ERROR      0x73  // Other error flag active
-#define I2C_STATUS_IGBT_OVERHEAT    0x74  // 
+#define I2C_STATUS_IGBT_OVERHEAT    0x74  // IGBT overheat error
+
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern uint8_t i2c_status_code;  // default normal status
