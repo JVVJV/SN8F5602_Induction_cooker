@@ -457,8 +457,8 @@ void Periodic_Power_Control(void) {
   }  
   
   // Count AC sync events
-  if (ISR_f_CM3_AC_sync) {
-      ISR_f_CM3_AC_sync = 0;
+  if (ISR_f_CM3_AC_Periodic_sync) {
+      ISR_f_CM3_AC_Periodic_sync = 0;
       periodic_AC_sync_cnt++;
   }
   
