@@ -31,6 +31,13 @@ uint16_t PW0D_backup = 0;
 static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
+uint8_t BurstMode0;
+uint8_t BurstMode1;
+
+static uint8_t periodic_profile_index = 0;
+static uint8_t profile_repeat_counter = 0; // 新增：記錄 profile 重複次數
+volatile uint16_t target_pw0d        = 0;   // 目標脈寬（1000 W 對應值）
+volatile bit      f_pw0d_ramp_active = 0;   // 軟啟動進行中
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -343,12 +350,27 @@ void finalize_shutdown(void)
 typedef struct {
     uint8_t heat_cycle;  // 加熱週期數
     uint8_t rest_cycle;  // 休息週期數
-} PeriodicConfig;
+} PeriodicConfig_BurstMode0,PeriodicConfig_BurstMode1;
 
-const PeriodicConfig code Periodic_table[] = {
+const PeriodicConfig_BurstMode0 code Periodic_table_BurstMode0[] = {
     {8, 2}, // level 0: 加熱 8 週期，休息 2 週期（對應 800000mW）
     {5, 5}, // level 1: 加熱 5 週期，休息 5 週期（對應 500000mW）
     {4, 16}  // level 2: 加熱 4 週期，休息 16 週期（對應 200000mW）
+};
+
+
+
+const PeriodicConfig_BurstMode1 code Periodic_table_BurstMode1[][3] = {
+    {{8, 2}, {8, 2}, {8, 2}},     // 800W
+    {{4, 4}, {5, 5}, {4, 4}},     // 500W
+    {{4, 16}, {2, 8}, {4, 16}}    // 200W
+};
+
+// 週期重覆次數設定：{level0-800W, level1-500W, level2-200W} × 3 段
+const uint8_t code Profile_repeat_limit[][3] = {
+    {30, 30, 30},   // 800 W
+    {30, 30, 30},   // 500 W
+    {30, 20, 30}    // 200 W
 };
 
 void Heat_Control(void)
@@ -457,8 +479,8 @@ void Periodic_Power_Control(void) {
   }  
   
   // Count AC sync events
-  if (ISR_f_CM3_AC_Periodic_sync) {
-      ISR_f_CM3_AC_Periodic_sync = 0;
+  if (ISR_f_CM3_AC_sync) {
+      ISR_f_CM3_AC_sync = 0;
       periodic_AC_sync_cnt++;
   }
   
@@ -468,18 +490,66 @@ void Periodic_Power_Control(void) {
   switch (periodic_heat_state) {
     case PERIODIC_REST_PHASE:
       // After rest_cycle AC periods, enter slowdown phase
-      if (periodic_AC_sync_cnt >= Periodic_table[level].rest_cycle) {
-        periodic_AC_sync_cnt = 0;
-        
-        // Backup PW0D before IGBT_C_slowdown
-        PW0D_lock = 1;
-        PW0D_backup = PW0D;
-        PW0D_lock = 0;
-        
-        IGBT_C_slowdown();
-        phase_start_tick = system_ticks;
-        periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
-      }
+      
+	if(Burst_mode == BurstMode0)
+		{		
+			if (periodic_AC_sync_cnt >= Periodic_table_BurstMode0[level].rest_cycle)
+				{
+					periodic_AC_sync_cnt = 0;
+					
+					// Backup PW0D before IGBT_C_slowdown
+					PW0D_lock = 1;
+					PW0D_backup = PW0D;
+					PW0D_lock = 0;
+					
+					IGBT_C_slowdown();
+					phase_start_tick = system_ticks;
+					periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
+					
+					// 輪詢 0→1→2 profile index			
+					profile_repeat_counter++;
+				 if (profile_repeat_counter >= 30) 
+					 {
+						 profile_repeat_counter = 0;
+						 periodic_profile_index++;
+						 if (periodic_profile_index >= 3) 
+							{
+								periodic_profile_index = 0;
+							}
+					 }		
+				}				
+			}
+		if(Burst_mode == BurstMode1)
+		{
+			if (periodic_AC_sync_cnt >= Periodic_table_BurstMode1[level][periodic_profile_index].rest_cycle)
+				{
+					periodic_AC_sync_cnt = 0;
+					
+					// Backup PW0D before IGBT_C_slowdown
+					PW0D_lock = 1;
+					PW0D_backup = PW0D;
+					PW0D_lock = 0;
+					
+					IGBT_C_slowdown();
+					phase_start_tick = system_ticks;
+					periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
+					
+					// 輪詢 0→1→2 profile index			
+					profile_repeat_counter++;
+					if (profile_repeat_counter >= Profile_repeat_limit[level][periodic_profile_index]) 
+						{
+							profile_repeat_counter = 0;
+							periodic_profile_index++;           // 換到下一段
+							if (periodic_profile_index >= 3)    // 跑完 3 段就循環回第 0 段
+								{  
+									periodic_profile_index = 0;
+								}
+			  	  }				
+				}
+						
+		}
+							
+      
       break;
 
     case PERIODIC_SLOWDOWN_PHASE:
@@ -504,12 +574,26 @@ void Periodic_Power_Control(void) {
       if (periodic_AC_sync_cnt == POWER_MEASURE_DELAY_CYCLES) {
         f_power_measure_valid = 1;
       }
-    
-      if (periodic_AC_sync_cnt >= Periodic_table[level].heat_cycle) {
-        periodic_AC_sync_cnt = 0;
-        phase_start_tick = system_ticks;
-        periodic_heat_state = PERIODIC_HEAT_END_PHASE;
+		  if(Burst_mode == BurstMode0) 
+			{
+				if (periodic_AC_sync_cnt >= Periodic_table_BurstMode0[level].heat_cycle) 
+					{      
+						periodic_AC_sync_cnt = 0;
+						phase_start_tick = system_ticks;
+						periodic_heat_state = PERIODIC_HEAT_END_PHASE;
+					}
       }
+			if(Burst_mode == BurstMode1)
+			{
+				if (periodic_AC_sync_cnt >= Periodic_table_BurstMode1[level][periodic_profile_index].heat_cycle)				
+				{
+					periodic_AC_sync_cnt = 0;
+					phase_start_tick = system_ticks;
+					periodic_heat_state = PERIODIC_HEAT_END_PHASE;
+				}
+			}
+			
+  
       break;
 
     case PERIODIC_HEAT_END_PHASE:
