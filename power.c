@@ -21,7 +21,7 @@
 
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-volatile bit f_heating_initialized = 0;     // 加熱功能是否已初始化
+volatile bit f_heating_initialized = 0; // Indicates whether heating has been initialized
 bit f_power_updated = 0;
 
 uint8_t level = 0;
@@ -31,13 +31,6 @@ uint16_t PW0D_backup = 0;
 static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
-uint8_t BurstMode0;
-uint8_t BurstMode1;
-
-static uint8_t periodic_profile_index = 0;
-static uint8_t profile_repeat_counter = 0; // 新增：記錄 profile 重複次數
-volatile uint16_t target_pw0d        = 0;   // 目標脈寬（1000 W 對應值）
-volatile bit      f_pw0d_ramp_active = 0;   // 軟啟動進行中
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -152,7 +145,7 @@ void reset_power_read_data(void)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 typedef struct {
     uint16_t adc;     // ADC value without current_base
-    uint16_t current; // 對應電流值 (單位：mA)
+    uint16_t current; // (mA)
 } LookupEntry;
 
 #define TABLE_SIZE 9
@@ -207,8 +200,8 @@ uint16_t current_lookup_interpolation(uint16_t adc_val)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define DEFAULT_BASE_CURRENT_ADC   316    // 預設基準電流 ADC 值
-#define BASE_CURRENT_TOLERANCE     8      // 允許誤差百分比（8%）
+#define DEFAULT_BASE_CURRENT_ADC   316    // Default reference current ADC value
+#define BASE_CURRENT_TOLERANCE     8      // Allowed tolerance percentage (8%)
 
 // 在編譯期間計算允許的上下限
 #define BASE_CURRENT_LOWER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 - BASE_CURRENT_TOLERANCE)) / 100)
@@ -224,30 +217,30 @@ void Measure_Base_Current(void) {
   
   // 檢查是否超出允許範圍
   if (measured_value < BASE_CURRENT_LOWER_LIMIT || measured_value > BASE_CURRENT_UPPER_LIMIT) {
-      current_base = DEFAULT_BASE_CURRENT_ADC;  // 超出範圍則使用預設值
+      current_base = DEFAULT_BASE_CURRENT_ADC;  // Use default if out of range
   } else {
-      current_base = measured_value;  // 正常範圍內則使用測得值
+      current_base = measured_value;  // Use measured value if within range
   }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 定義電壓和電流快速變化及上下限
-#define VOLTAGE_UPPER_LIMIT          255     // V 過壓觸發
-#define VOLTAGE_RECOVER_HIGH         245     // V 過壓回復
+#define VOLTAGE_UPPER_LIMIT          255     // Over-voltage threshold (V)
+#define VOLTAGE_RECOVER_HIGH         245     // Over-voltage recovery (V)
 
-#define VOLTAGE_LOWER_LIMIT          170     // V 欠壓觸發
-#define VOLTAGE_RECOVER_LOW          180     // V 欠壓回復
+#define VOLTAGE_LOWER_LIMIT          170     // Under-voltage threshold (V)
+#define VOLTAGE_RECOVER_LOW          180     // Under-voltage recovery (V)
 
-#define CURRENT_UPPER_LIMIT_mA      9600    // 9.6A = 9600 mA
-#define CURRENT_RECOVER_LIMIT_mA    9400   // 9.4A 過流回復
+#define CURRENT_UPPER_LIMIT_mA      9600    // Over-current threshold: 9.6A = 9600 mA
+#define CURRENT_RECOVER_LIMIT_mA    9400    // Over-current recovery: 9.4A
 
-//#define VOLTAGE_CHANGE_THRESHOLD 20    // 電壓快速變化閾值 (單位：伏特)
-//#define CURRENT_CHANGE_THRESHOLD 10    // 電流快速變化閾值 (單位：安培)
+//#define VOLTAGE_CHANGE_THRESHOLD 20    // Voltage rapid change threshold (unit: V)
+//#define CURRENT_CHANGE_THRESHOLD 10    // Current rapid change threshold (unit: A)
 
 void Quick_Change_Detect() {
   // 前一次的測量值
-//  static uint16_t last_voltage = 0;     // 上次測量的電壓值
-//  static uint16_t last_current = 0;     // 上次測量的電流值  
+//  static uint16_t last_voltage = 0;     // Previous voltage value
+//  static uint16_t last_current = 0;     // Previous current value
 
     // === 過壓檢查與回復 ===
     if (error_flags.f.Over_voltage) {
@@ -288,21 +281,21 @@ void Quick_Change_Detect() {
         PWM_INTERRUPT_DISABLE;
     }
     
-//    // 檢查電壓是否快速變化
+//    // Check if voltage changes rapidly
 //    if (abs(voltage_IIR_new - last_voltage) > VOLTAGE_CHANGE_THRESHOLD) {
-//        error_flags.f.Voltage_quick_change = 1;  // 電壓快速變化
+//        error_flags.f.Voltage_quick_change = 1;  // Voltage rapid change
 //    } else {
-//        error_flags.f.Voltage_quick_change = 0;  // 清除快速變化標誌
+//        error_flags.f.Voltage_quick_change = 0;  // Clear rapid change flag
 //    }
 
-//    // 檢查電流是否快速變化
+//    // Check if current changes rapidly
 //    if (abs(current_RMS_mA - last_current) > CURRENT_CHANGE_THRESHOLD) {
-//        error_flags.f.Current_quick_large = 1;  // 電流快速變化
+//        error_flags.f.Current_quick_large = 1;  // Current rapid change
 //    } else {
-//        error_flags.f.Current_quick_large = 0;  // 清除快速變化標誌
+//        error_flags.f.Current_quick_large = 0;  // Clear rapid change flag
 //    }
 
-//    // 更新上次的測量值
+//    // Update previous measurement values
 //    last_voltage = voltage_RMS_V;
 //    last_current = current_RMS_mA;
 }
@@ -311,7 +304,7 @@ void Quick_Change_Detect() {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void stop_heating(void)
 {
-  // 實現停止加熱邏輯
+  // Implement heating stop logic
   P01 = 1;  //PWM Pin
   PW0M = 0;
   PWM_INTERRUPT_DISABLE;
@@ -321,17 +314,17 @@ void stop_heating(void)
   PWM_Request_Reset();
   
   power_setting = 0;
-  f_pot_detected = 0;       // 重置鍋具檢測標誌
+  f_pot_detected = 0;       // Reset pot detection flag
   f_heating_initialized = 0;
 }
 
 void pause_heating(void)
 {
-  // 暫停加熱
+  // Pause heating
   PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
   PWM_INTERRUPT_DISABLE;
   CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
-  f_heating_initialized = 0;    // Clear加熱已初始化標誌
+  f_heating_initialized = 0;    // Clear heating initialized flag
 }
 
 void shutdown_process(void)
@@ -347,56 +340,30 @@ void finalize_shutdown(void)
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-typedef struct {
-    uint8_t heat_cycle;  // 加熱週期數
-    uint8_t rest_cycle;  // 休息週期數
-} PeriodicConfig_BurstMode0,PeriodicConfig_BurstMode1;
-
-const PeriodicConfig_BurstMode0 code Periodic_table_BurstMode0[] = {
-    {8, 2}, // level 0: 加熱 8 週期，休息 2 週期（對應 800000mW）
-    {5, 5}, // level 1: 加熱 5 週期，休息 5 週期（對應 500000mW）
-    {4, 16}  // level 2: 加熱 4 週期，休息 16 週期（對應 200000mW）
-};
-
-
-
-const PeriodicConfig_BurstMode1 code Periodic_table_BurstMode1[][3] = {
-    {{8, 2}, {8, 2}, {8, 2}},     // 800W
-    {{4, 4}, {5, 5}, {4, 4}},     // 500W
-    {{4, 16}, {2, 8}, {4, 16}}    // 200W
-};
-
-// 週期重覆次數設定：{level0-800W, level1-500W, level2-200W} × 3 段
-const uint8_t code Profile_repeat_limit[][3] = {
-    {30, 30, 30},   // 800 W
-    {30, 30, 30},   // 500 W
-    {30, 20, 30}    // 200 W
-};
-
 void Heat_Control(void)
 {
-  static uint8_t idata prev_level = 0xFF;  // // For PERIODIC_HEATING, use invalid default to ensure first-time reset
+  static uint8_t idata prev_level = 0xFF;  // For PERIODIC_HEATING, use invalid default to ensure first-time reset
   
-  // 如果系統狀態為 ERROR
+  // If the system state is ERROR
   if (system_state == ERROR) {
       return;
   }
 
-  // 如果功率設定為 0，直接切換至待機狀態
+  // If power is set to 0, switch directly to standby state
   if (power_setting == 0) {
-      system_state = STANDBY; // 切換系統狀態為待機
-      stop_heating(); // 停止加熱
+      system_state = STANDBY; // Set system state to standby
+      stop_heating(); // Stop heating
       return;
   }
 
   // 檢查鍋具狀態
   if (f_pot_detected == 0) {
     Fan_Enable();     // drive fan at normal or full speed
-    Pot_Detection();  // 執行鍋具檢測邏輯
+    Pot_Detection();  // Execute pot detection logic
     return;
   }
   
-  // 一般加熱模式
+  // Normal heating mode
   if (power_setting > 800000) {
     
   // NOTE: power capping is currently disabled — always use the requested power HCW***
@@ -409,7 +376,7 @@ void Heat_Control(void)
     
     target_power  = power_setting;
     
-    system_state = HEATING;       // 切換系統狀態為 HEATING
+    system_state = HEATING;       // Switch system state to HEATING
     
     if (f_heating_initialized) {
       f_power_measure_valid = 1;
@@ -420,13 +387,13 @@ void Heat_Control(void)
       pause_heating();
     }
   }
-  else // 間歇加熱模式
+  else // Periodic heating mode
   {
-    switch (power_setting) {    // 檔位判斷
-      case 800000: level = 0; break; // 1檔
-      case 500000: level = 1; break; // 2檔
-      case 200000: level = 2; break; // 3檔
-      default: return; // 確保安全
+    switch (power_setting) {    // Power level determination
+      case 800000: level = 0; break;
+      case 500000: level = 1; break;
+      case 200000: level = 2; break;
+      default: return; // For safety
     }
     // Reset AC sync counter if level has changed, 
     // prevent periodic heating mode from switching periodic state at the wrong timing when level changes.
@@ -437,22 +404,52 @@ void Heat_Control(void)
     }
     
     target_power = PERIODIC_TARGET_POWER;
-    system_state = PERIODIC_HEATING; // 切換系統狀態為間歇加熱模式
+    system_state = PERIODIC_HEATING; //  Switch system state to periodic heating mode
   }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define POWER_MEASURE_DELAY_CYCLES  2 // Number of AC sync cycles to delay before measuring power
 
+#define PERIODIC_LEVEL_COUNT    3    // Number of periodic levels (e.g., 800W, 500W, 200W)
+#define PATTERN_COUNT           3    // Number of patterns per level
+
+typedef struct {
+    uint8_t heat_cycle;  // Number of heat cycles
+    uint8_t rest_cycle;  // Number of rest cycles
+} PeriodicConfig;
+
+const PeriodicConfig code BurstMode_basic_table[PERIODIC_LEVEL_COUNT] = {
+    {8, 2}, // level 0: 8 heat cycles, 2 rest cycles   (800W)
+    {5, 5}, // level 1: 5 heat cycles, 5 rest cycles   (500W)
+    {4, 16}  // level 2: 4 heat cycles, 16 rest cycles (200W)
+};
+
+const PeriodicConfig code BurstMode_dynamic_table[PERIODIC_LEVEL_COUNT][PATTERN_COUNT] = {
+    {{8, 2}, {8, 2}, {8, 2}},     // 800W
+    {{4, 4}, {5, 5}, {4, 4}},     // 500W
+    {{4, 16}, {2, 8}, {4, 16}}    // 200W
+};
+
+// Number of repeat times for each pattern: [pattern][stage]
+const uint8_t code PatternRepeatTimes[PERIODIC_LEVEL_COUNT][PATTERN_COUNT] = {
+    {30, 30, 30},   // 800 W
+    {30, 30, 30},   // 500 W
+    {30, 20, 30}    // 200 W
+};
+
 PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
 uint8_t periodic_AC_sync_cnt = 0;
+static uint8_t pattern_index = 0;
+static uint8_t pattern_repeat_count = 0;    // record how many times the current pattern has repeated
+
 bit f_power_measure_valid  = 0;  // Flag to indicate current measurement stabilization
 
 void Periodic_Power_Control(void) {
-  static uint8_t phase_start_tick = 0;  // 記錄 SLOWDOWN_PHASE & HEAT_END_PHASE 開始時間
+  static uint8_t phase_start_tick = 0;  // Record the start time of SLOWDOWN_PHASE & HEAT_END_PHASE
   static uint8_t elapsed_ticks;
-  static bit f_first_entry = 1;         // 標記是否為第一次進入 PERIODIC_HEATING
-  static bit f_periodic_pulse_init = 1; // 標記是否需要 PULSE_WIDTH_PERIODIC_START
+  static bit f_first_entry = 1;         // Mark if it is the first time entering PERIODIC_HEATING
+  static bit f_periodic_pulse_init = 1; // Mark if PULSE_WIDTH_PERIODIC_START is needed
   
   // Only run in PERIODIC_HEATING state
   if (system_state != PERIODIC_HEATING) {
@@ -491,66 +488,47 @@ void Periodic_Power_Control(void) {
     case PERIODIC_REST_PHASE:
       // After rest_cycle AC periods, enter slowdown phase
       
-	if(Burst_mode == BurstMode0)
-		{		
-			if (periodic_AC_sync_cnt >= Periodic_table_BurstMode0[level].rest_cycle)
-				{
-					periodic_AC_sync_cnt = 0;
-					
-					// Backup PW0D before IGBT_C_slowdown
-					PW0D_lock = 1;
-					PW0D_backup = PW0D;
-					PW0D_lock = 0;
-					
-					IGBT_C_slowdown();
-					phase_start_tick = system_ticks;
-					periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
-					
-					// 輪詢 0→1→2 profile index			
-					profile_repeat_counter++;
-				 if (profile_repeat_counter >= 30) 
-					 {
-						 profile_repeat_counter = 0;
-						 periodic_profile_index++;
-						 if (periodic_profile_index >= 3) 
-							{
-								periodic_profile_index = 0;
-							}
-					 }		
-				}				
-			}
-		if(Burst_mode == BurstMode1)
-		{
-			if (periodic_AC_sync_cnt >= Periodic_table_BurstMode1[level][periodic_profile_index].rest_cycle)
-				{
-					periodic_AC_sync_cnt = 0;
-					
-					// Backup PW0D before IGBT_C_slowdown
-					PW0D_lock = 1;
-					PW0D_backup = PW0D;
-					PW0D_lock = 0;
-					
-					IGBT_C_slowdown();
-					phase_start_tick = system_ticks;
-					periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
-					
-					// 輪詢 0→1→2 profile index			
-					profile_repeat_counter++;
-					if (profile_repeat_counter >= Profile_repeat_limit[level][periodic_profile_index]) 
-						{
-							profile_repeat_counter = 0;
-							periodic_profile_index++;           // 換到下一段
-							if (periodic_profile_index >= 3)    // 跑完 3 段就循環回第 0 段
-								{  
-									periodic_profile_index = 0;
-								}
-			  	  }				
-				}
-						
-		}
-							
-      
-      break;
+      #if BURST_MODE == BURST_MODE_BASIC
+        if (periodic_AC_sync_cnt >= BurstMode_basic_table[level].rest_cycle)
+        {
+          periodic_AC_sync_cnt = 0;
+          
+          // Backup PW0D before IGBT_C_slowdown
+          PW0D_lock = 1;
+          PW0D_backup = PW0D;
+          PW0D_lock = 0;
+          
+          IGBT_C_slowdown();
+          phase_start_tick = system_ticks;
+          periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
+        }
+        
+      #elif BURST_MODE == BURST_MODE_DYNAMIC
+        if (periodic_AC_sync_cnt >= BurstMode_dynamic_table[level][pattern_index].rest_cycle)
+        {
+          periodic_AC_sync_cnt = 0;
+          
+          // Backup PW0D before IGBT_C_slowdown
+          PW0D_lock = 1;
+          PW0D_backup = PW0D;
+          PW0D_lock = 0;
+          
+          IGBT_C_slowdown();
+          phase_start_tick = system_ticks;
+          periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
+          
+          // pattern_index control
+          pattern_repeat_count++;
+          if (pattern_repeat_count >= PatternRepeatTimes[level][pattern_index]) 
+          {
+            pattern_repeat_count = 0;
+            pattern_index++;   // Switch to next pattern
+            if (pattern_index >= PATTERN_COUNT)
+            { pattern_index = 0;}
+          }
+        }
+      #endif
+    break;
 
     case PERIODIC_SLOWDOWN_PHASE:
       // Wait half-cycle average time before resuming heating
@@ -574,26 +552,23 @@ void Periodic_Power_Control(void) {
       if (periodic_AC_sync_cnt == POWER_MEASURE_DELAY_CYCLES) {
         f_power_measure_valid = 1;
       }
-		  if(Burst_mode == BurstMode0) 
-			{
-				if (periodic_AC_sync_cnt >= Periodic_table_BurstMode0[level].heat_cycle) 
-					{      
-						periodic_AC_sync_cnt = 0;
-						phase_start_tick = system_ticks;
-						periodic_heat_state = PERIODIC_HEAT_END_PHASE;
-					}
-      }
-			if(Burst_mode == BurstMode1)
-			{
-				if (periodic_AC_sync_cnt >= Periodic_table_BurstMode1[level][periodic_profile_index].heat_cycle)				
+      
+		  #if BURST_MODE == BURST_MODE_BASIC
+				if (periodic_AC_sync_cnt >= BurstMode_basic_table[level].heat_cycle) 
+        {      
+          periodic_AC_sync_cnt = 0;
+          phase_start_tick = system_ticks;
+          periodic_heat_state = PERIODIC_HEAT_END_PHASE;
+        }
+      
+			#elif BURST_MODE == BURST_MODE_DYNAMIC
+				if (periodic_AC_sync_cnt >= BurstMode_dynamic_table[level][pattern_index].heat_cycle)				
 				{
 					periodic_AC_sync_cnt = 0;
 					phase_start_tick = system_ticks;
 					periodic_heat_state = PERIODIC_HEAT_END_PHASE;
 				}
-			}
-			
-  
+      #endif
       break;
 
     case PERIODIC_HEAT_END_PHASE:
@@ -661,8 +636,8 @@ void IGBT_C_slowdown(void) {
     PW0M &= ~mskPW0EN;    // Disable PWM
     CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
   
-    PW0Y = SLOWDOWN_PWM_PERIOD;   // **設定 PWM 週期**
-    PW0D = SLOWDOWN_PWM_START_WIDTH;    // **設定 PWM 脈衝寬度**
+    PW0Y = SLOWDOWN_PWM_PERIOD;       // Set PWM period
+    PW0D = SLOWDOWN_PWM_START_WIDTH;  // Set PWM pulse width
     
     PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
@@ -771,8 +746,8 @@ void Zero_Crossing_Task(void)
 #endif
 
 static bit f_jitter_in_progress  = 0;
-bit f_jitter_active = 0;                    // 抖頻啟動旗標
-static uint8_t jitter_state_start_tick = 0; // 記錄啟動時間點
+bit f_jitter_active = 0;                    // Frequency jitter enable flag
+static uint8_t jitter_state_start_tick = 0; // Record the state start tick
 volatile uint8_t jitter_adjust_cnt = 0;
 FrequencyJitterState Frequency_jitter_state = JITTER_HOLD;
 
@@ -780,7 +755,7 @@ void Frequency_jitter(void)
 {
   static uint8_t elapsed;
 
-  // 若不在加熱狀態，不執行任何動作
+  // Do nothing if heating has not been initialized
   if (!f_heating_initialized) {
     f_jitter_in_progress  = 0;
     f_jitter_active = 0;
@@ -788,7 +763,7 @@ void Frequency_jitter(void)
     return;
   }
 
-  // 狀態尚未被觸發，什麼都不做
+  // Do nothing if the jitter process has not started
   if (!f_jitter_in_progress )
     return;
 

@@ -33,6 +33,12 @@
 // Select desired AC frequency mode here:
 #define AC_FREQ_MODE  AC_FREQ_MODE_FORCE_50HZ
 
+// Burstmode Control
+#define BURST_MODE_BASIC         0   // Heat & rest cycle combination is fixed
+#define BURST_MODE_DYNAMIC       1   // Heat & rest cycle combination switches dynamically
+// Select desired AC burst mode here:
+#define BURST_MODE  BURST_MODE_BASIC
+
 
 #define CURRENT_ADC_CHANNEL       19  // OPO  定義系統電流量測的 ADC 通道 
 #define VOLTAGE_ADC_CHANNEL       7   // AIN7 定義電網電壓量測的 ADC 通道

@@ -38,8 +38,6 @@ typedef enum {
 #define POWER_CALC_ENABLE  1
 #define POWER_CALC_DISABLE 0
 
-#define Burst_mode BurstMode0
-
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern bit f_heating_initialized;
 extern bit f_power_measure_valid;
