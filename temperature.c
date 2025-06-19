@@ -13,17 +13,33 @@
 #include "config.h"
 #include "ADC.h"
 #include "system.h"
+#include "power.h"
 #include "buzzer.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define TEMP_ACCUMULATE_COUNT 8
+//#define TEMP_LOG_SIZE 50
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-uint16_t idata IGBT_TEMP_code = 0;        // 目前IGBT溫度 AD_code
-uint16_t idata TOP_TEMP_code = 0;         // 目前表面溫度 AD_code
-int idata IGBT_TEMP_C = 0;                // 目前IGBT溫度 度C
-int idata TOP_TEMP_C = 0;                 // 目前表面溫度 度C
-static bit f_temp_updated = 0;      // 溫度變數更新旗標
+uint16_t idata IGBT_TEMP_code = 0;        // Current IGBT temperature AD_code
+uint16_t idata TOP_TEMP_code = 0;         // Current surface temperature AD_code
+int idata IGBT_TEMP_C = 0;                // Current IGBT temperature in Celsius
+int idata TOP_TEMP_C = 0;                 // Current surface temperature in Celsius
+static bit f_temp_updated = 0;            // Temperature update flag
+
+//int xdata igbt_temp_log[TEMP_LOG_SIZE];
+//unsigned char idata temp_log_index = 0;
+//static uint16_t last_log_time_s = 0;  // Timestamp for per-second logging
+
+// === Variables for NTC monitoring ===
+static bit f_NTC_monitoring;
+static uint8_t ntc_change_count;
+static idata int last_IGBT_temp = 0;
+static uint32_t last_power_setting = 0;
+
+// Variables for per-second sampling
+uint8_t ntc_last_sample_time_s = 0;
+
 
 /**
 * The NTC table has 129 interpolation points.
@@ -84,15 +100,15 @@ const int code TOP_NTC_table[129] = {
 void Temp_Measure(void)
 {
   uint16_t temp_raw;
-  static uint16_t idata IGBT_TEMP_sum = 0;      // 累加 IGBT 溫度的變數
-  static uint16_t idata TOP_TEMP_sum = 0;       // 累加表面溫度的變數
-  static uint8_t idata Temp_Measure_cnt = 0;    // 量測次數計數器  
+  static uint16_t idata IGBT_TEMP_sum = 0;      // Accumulator for IGBT temperature
+  static uint16_t idata TOP_TEMP_sum = 0;       // Accumulator for surface temperature
+  static uint8_t idata Temp_Measure_cnt = 0;    // Measurement count  
   
-  // 呼叫通用 ADC 量測函式，量測 IGBT 溫度
+  // Call ADC measurement function, measure IGBT temperature
   ADC_measure_4_avg(IGBT_TEMP_ADC_CHANNEL, &temp_raw);
   IGBT_TEMP_sum += temp_raw;
 
-  // 呼叫通用 ADC 量測函式，量測表面溫度
+  // Call ADC measurement function, measure surface  temperature
   ADC_measure_4_avg(TOP_TEMP_ADC_CHANNEL, &temp_raw);
   
   #if ICE_DEBUG_MODE == 1
@@ -100,18 +116,18 @@ void Temp_Measure(void)
   #endif
   TOP_TEMP_sum += temp_raw;
 
-  // 增加量測次數
+  // Increase measurement count
   Temp_Measure_cnt++;
 
-  // 每 8 次執行一次平均計算並更新變數
+  // Perform averaging and update variables every 8 times
   if (Temp_Measure_cnt >= TEMP_ACCUMULATE_COUNT) {
-    IGBT_TEMP_code = IGBT_TEMP_sum>>3;    // 更新IGBT溫度 sum/8
-    TOP_TEMP_code = TOP_TEMP_sum>>3;      // 更新表面溫度 sum/8
+    IGBT_TEMP_code = IGBT_TEMP_sum>>3;    // Update IGBT temperature sum/8
+    TOP_TEMP_code = TOP_TEMP_sum>>3;      // Update surface temperature sum/8
 
-    // 設置旗標，表示溫度變數已更新
+    // Set flag to indicate temperature variables are updated
     f_temp_updated = 1;
 
-    // 重置累加器與計數器
+    // Reset accumulators and counter
     IGBT_TEMP_sum = 0;
     TOP_TEMP_sum = 0;
     Temp_Measure_cnt = 0;
@@ -120,27 +136,32 @@ void Temp_Measure(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // IGBT temperature error threshold
-#define IGBT_TEMP_UPPER_LIMIT  110  // IGBT 溫度上限 (攝氏度) 110
-#define IGBT_TEMP_RECOVERY     80   // IGBT Overheat recovery threshold 80
-#define IGBT_TEMP_LOWER_LIMIT -20   // IGBT 溫度下限 (攝氏度)
+#define IGBT_TEMP_UPPER_LIMIT  110  // IGBT upper temperature limit (°C) 110
+#define IGBT_TEMP_RECOVERY     80   // IGBT Overheat recovery threshold (°C) 80
+#define IGBT_TEMP_LOWER_LIMIT -20   // IGBT lower temperature limit (°C)
 
 // Warning temperature threshold before reaching overheat
 #define IGBT_TEMP_WARNING_LIMIT      55  // Start of heat warning zone        HCW***
 #define IGBT_TEMP_WARNING_RECOVERY   50  // Heat warning recovery threshold   HCW***
 
 // IGBT temperature error threshold
-#define TOP_TEMP_UPPER_LIMIT  180   // TOP 溫度上限 (單位：適當的測量單位，例如攝氏度)
-#define TOP_TEMP_LOWER_LIMIT  -20   // TOP 溫度下限 (單位：適當的測量單位，例如攝氏度)
-#define TOP_TEMP_RECOVERY     100   // TOP Overheat release temperature
+#define TOP_TEMP_UPPER_LIMIT  180   // TOP upper temperature limit (°C)
+#define TOP_TEMP_LOWER_LIMIT  -20   // TOP lower temperature limit (°C)
+#define TOP_TEMP_RECOVERY     100   // TOP overheat recovery temperature (°C)
+
+// ==== NTC  ====
+#define NTC_MONITOR_ELAPSE_MAX   30
+#define NTC_MONITOR_CHANGE_MIN   5
 
 
 void Temp_Process(void)
 {
   int p1,p2;
+  static uint8_t elapsed;
   
-  // 檢查是否有更新的溫度數據
+  // Check if there is updated temperature data
   if (f_temp_updated) {
-    f_temp_updated = 0;  // 清除溫度更新旗標
+    f_temp_updated = 0;  // Clear temperature update flag
     
     //IGBT_TEMP_code += TMP_CAL_Offset;
   
@@ -151,7 +172,25 @@ void Temp_Process(void)
     
     /* Interpolate between both points. */
     IGBT_TEMP_C = p1 - (((p1-p2)*(IGBT_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
+  
+    // Start NTC monitoring on power change
+    if (power_setting != last_power_setting && f_heating_initialized) 
+    {
+        last_power_setting = power_setting;
+      
+        f_NTC_monitoring = 1;
+        ntc_change_count = 0;
+        last_IGBT_temp = IGBT_TEMP_C;
+        ntc_last_sample_time_s = (uint8_t)system_time_1s;
+    }
     
+//	  // Log IGBT_TEMP_C every 1 second
+//		if (system_time_1s != last_log_time_s) {
+//				last_log_time_s = system_time_1s;
+//				igbt_temp_log[temp_log_index] = IGBT_TEMP_C;
+//				temp_log_index = (temp_log_index + 1) % TEMP_LOG_SIZE;
+//		}
+
     // Overheat protection
     if (IGBT_TEMP_C > IGBT_TEMP_UPPER_LIMIT) {
       error_flags.f.IGBT_overheat = 1;
@@ -159,11 +198,35 @@ void Temp_Process(void)
       error_flags.f.IGBT_overheat = 0;
     }
 
-    // Sensor fault detection
+    // Sensor fault1 detection, Abnormal value
     if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
-      error_flags.f.IGBT_sensor_fault = 1;
+      error_flags.f.IGBT_sensor_fault1 = 1;
     } else {
-      error_flags.f.IGBT_sensor_fault = 0;
+      error_flags.f.IGBT_sensor_fault1 = 0;
+    }
+    
+    // Sensor fault2 detection, Temperature not changed
+    if (f_NTC_monitoring) 
+    {
+      elapsed = (uint8_t)system_time_1s - ntc_last_sample_time_s;
+      if (elapsed < NTC_MONITOR_ELAPSE_MAX) 
+      {
+        // Every 1 second
+        if ((uint8_t)system_time_1s != ntc_last_sample_time_s) 
+        {
+          ntc_last_sample_time_s = system_time_1s; // Update last sample time
+          if (IGBT_TEMP_C != last_IGBT_temp) 
+              ntc_change_count++;
+          
+          last_IGBT_temp = IGBT_TEMP_C; // Update last temperature
+        }
+      }
+      else 
+      {
+        f_NTC_monitoring = 0;
+        if (ntc_change_count <= NTC_MONITOR_CHANGE_MIN)
+          error_flags.f.IGBT_sensor_fault2 = 1;
+      }
     }
     
     // Heat warning zone and fan control
@@ -187,7 +250,7 @@ void Temp_Process(void)
     /* Interpolate between both points. */
     TOP_TEMP_C = p1 + (((p2-p1)*(TOP_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
     
-    // 檢查溫度是否異常 TOP_Temp_Process
+    // Check for abnormal TOP temperature (TOP_Temp_Process)
     if (TOP_TEMP_C > TOP_TEMP_UPPER_LIMIT) {
       error_flags.f.TOP_overheat = 1;
     } else if (TOP_TEMP_C < TOP_TEMP_RECOVERY) {
@@ -202,3 +265,18 @@ void Temp_Process(void)
   }
 }
 
+
+//void Print_All_IGBT_Temps(void)
+//{
+//	uint8_t i;
+//    // idx=0 is the oldest, idx=49 is the newest
+//    for (i = 0; i < TEMP_LOG_SIZE; i++) {
+//        // Calculate the position in the circular buffer
+//        int latest_pos = (temp_log_index + TEMP_LOG_SIZE - 1) % TEMP_LOG_SIZE;
+//        int pos = (latest_pos + TEMP_LOG_SIZE - i) % TEMP_LOG_SIZE;
+//        int temp = igbt_temp_log[pos];
+
+//        // Use printf here, or change to your display method
+//        //printf("IGBT_TEMP_LOG[%2d] = %d\n", i, temp);
+//    }
+//}

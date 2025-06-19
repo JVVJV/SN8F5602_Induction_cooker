@@ -26,7 +26,8 @@ typedef union {
     struct {
       uint8_t IGBT_overheat : 1;
       uint8_t TOP_overheat : 1;
-      uint8_t IGBT_sensor_fault : 1;
+      uint8_t IGBT_sensor_fault1 : 1; // Abnormal value
+      uint8_t IGBT_sensor_fault2 : 1; // Temperature not changed
       uint8_t TOP_sensor_fault : 1;
       uint8_t Pot_missing : 1;
       uint8_t Over_voltage : 1;
@@ -93,6 +94,8 @@ typedef enum {
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit ISR_f_125us;
 extern volatile uint8_t system_ticks;
+extern uint16_t system_time_1ms;
+extern uint16_t system_time_1s;
 extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;

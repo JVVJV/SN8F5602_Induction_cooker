@@ -26,8 +26,8 @@
 #include "I2C.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
-#define SYSTEM_TICKS_PER_10MS   80    // 每 10 ms 的計數 (125 μs * 80 = 10 ms)
-#define SYSTEM_10MS_PER_SECOND  100   // 每秒包含的 10 ms 計數
+#define SYSTEM_TICKS_PER_10MS   80    // Count per 10 ms (125 us * 80 = 10 ms)
+#define SYSTEM_10MS_PER_SECOND  100   // Number of 10 ms units per second
 
 TaskType current_task = TASK_HEAT_CONTROL;
 
@@ -55,27 +55,27 @@ void main (void)
   OPCAL -= 6; 
   #endif
   
-  // 初始化模塊
-  SystemCLK_Init();       // 初始化 系統頻率
-  GPIO_Init();            // 初始化 GPIO 配置
-  Timer0_Init();          // 初始化 Timer0，用於產生 125 微秒中斷
-  Comparator_Init();      // 初始化所有比較器 (CM0, CM1, CM2)
-  OP_Amp_Init();          // 初始化運算放大器，用於電流量測
-  PWM_Init();             // 初始化PWM for IGBT driving
-  Buzzer_Init();          // 初始化風扇驅動
-  I2C_Init();             // 初始化 I2C 接口
+  // Initialize modules
+  SystemCLK_Init();       // Initialize system frequency
+  GPIO_Init();            // Initialize GPIO configuration
+  Timer0_Init();          // Initialize Timer0 for 125 us interrupts
+  Comparator_Init();      // Initialize comparators (CM0, CM1, CM2)
+  OP_Amp_Init();          // Initialize operational amplifiers for current measurement
+  PWM_Init();             // Initialize PWM for IGBT driving
+  Buzzer_Init();          // Initialize fan control
+  I2C_Init();             // Initialize I2C interface
   
-  CNTdown_Timer_Init();   // 初始化倒數計時模組
+  CNTdown_Timer_Init();   // Initialize countdown timer module
   
-  EAL = 1;                // 啟用全域中斷
+  EAL = 1;                // Enable global interrupt
   
-  Warmup_Delay();         // 30ms
+  Warmup_Delay();         // 30 ms delay
   
-  ADC_Init();             // 初始化 ADC，用於多通道量測
+  ADC_Init();             // Initialize ADC
   
-  Measure_AC_Low_Time();  // 量測AC low tume, 用於IGBT C級能量漸放時間 & 啟動間歇加熱時間點
+  Measure_AC_Low_Time();  // Measure AC low time for IGBT energy ramp and burst mode heating start
   Detect_AC_Frequency();  // 50Hz or 60Hz
-  Measure_Base_Current(); // 量測Base電流, for OP offset
+  Measure_Base_Current(); // Measure base current for OP offset
   Surge_Protection_Modify(); 
   
   // Reset timing-related flags used for scheduling or synchronization
@@ -83,64 +83,63 @@ void main (void)
   ISR_f_CM3_AC_Zero_sync = 0;
   ISR_f_CM3_AC_sync = 0;
   
-  // 進入主程式循環
+  // Enter main loop
   while (1) {
     WDTR = 0x5A; // Clear watchdog
     I2C_Communication();
     
-    // 125 μs 定時邏輯
+    // 125 us timing logic
     if (ISR_f_125us) {
-      ISR_f_125us = 0;  // 清除 125 微秒旗標
+      ISR_f_125us = 0;  // Clear 125 us flag
             
-      // 更新系統時間
+      // Update system time
       Update_System_Time();  
       
-      // 固定任務
+      // Regular tasks
       Power_read();
-      
       Zero_Crossing_Task();
       Frequency_jitter();
        
-      // 次任務循環
+      // Subtask loop
       switch (current_task) {
         case TASK_HEAT_CONTROL:
             Heat_Control();
-            current_task = TASK_POWER_CONTROL; // 切換到下一個任務
+            current_task = TASK_POWER_CONTROL; // Next task
             break;
         
         case TASK_POWER_CONTROL:
             Power_Control();
-            current_task = TASK_QUICK_CHANGE_DETECT; // 切換到下一個任務
+            current_task = TASK_QUICK_CHANGE_DETECT; // Next task
             break;  
         
         case TASK_QUICK_CHANGE_DETECT:
             Quick_Change_Detect();
-            current_task = TASK_TEMP_MEASURE; // 切換到下一個任務
+            current_task = TASK_TEMP_MEASURE; // Next task
             break;
 
         case TASK_TEMP_MEASURE:
             Temp_Measure();
-            current_task = TASK_TEMP_PROCESS; // 切換到下一個任務
+            current_task = TASK_TEMP_PROCESS; // Next task
             break;
           
         case TASK_TEMP_PROCESS:
             Temp_Process();
-            current_task = TASK_CURRENT_POT_CHECK; // 切換到下一個任務
+            current_task = TASK_CURRENT_POT_CHECK; // Next task
             break;
 
         case TASK_CURRENT_POT_CHECK:
             Pot_Detection_In_Heating();
-            current_task = TASK_SHUTDOWN; // 切換到下一個任務
+            current_task = TASK_SHUTDOWN; // Next task
             break;
 
         case TASK_SHUTDOWN:
-            //Shutdown_Task();  // 執行關機任務
-            current_task = TASK_ERROR_PROCESS; // 切換到下一個任務
+            //Shutdown_Task();  // Execute shutdown task
+            current_task = TASK_ERROR_PROCESS; // Next task
             break;
 
         case TASK_ERROR_PROCESS:
-            Error_Process();  // 處理錯誤任務
-            current_task = TASK_HEAT_CONTROL;  // 循環回到第一個任務
+            Error_Process();  // Handle error task
+            current_task = TASK_HEAT_CONTROL;  // Back to first task
             break;
 
         default:  break;

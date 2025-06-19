@@ -48,7 +48,7 @@
 #define PERIODIC_TARGET_POWER     1000000 // 1000 000mW
 
 //#define PWM_MAX_WIDTH           960         // PWM 最大寬度   960cnt @32MHz = 30us
-//#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us HCW***
+//#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
 //#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us 
 #define PWM_MAX_WIDTH           704         // PWM 最大寬度   704cnt @32MHz = 22us
 //#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
