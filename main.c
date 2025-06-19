@@ -125,6 +125,7 @@ void main (void)
           
         case TASK_TEMP_PROCESS:
             Temp_Process();
+			    //	Print_All_IGBT_Temps();
             current_task = TASK_CURRENT_POT_CHECK; // 切換到下一個任務
             break;
 

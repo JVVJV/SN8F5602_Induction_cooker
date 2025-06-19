@@ -34,6 +34,7 @@ typedef union {
       uint8_t Over_current : 1;
       uint8_t Voltage_quick_change : 1;
       uint8_t Current_quick_large : 1;
+			uint8_t NTC_error : 1;
     } f;
     uint16_t all_flags; // 用於快速檢查所有標誌
 } ErrorFlags;
@@ -89,6 +90,7 @@ typedef enum {
 #define CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY   1 // 控制 16ms 電流變化檢查倒數計時器 ID
 #define CNTDOWN_TIMER_POWER_CONTROL               2 // 控制 5ms POWER_CONTROL
 #define CNTDOWN_TIMER_I2C                         3 // I2C 計時器 ID
+#define CNTDOWN_TIMER_NTC_CHECK                   4 // 60 秒 NTC 檢查計時器
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit ISR_f_125us;
@@ -130,6 +132,8 @@ extern PotAnalyzeState pot_analyze_state;
 extern xdata uint16_t tune_cnt;
 extern xdata uint32_t tune_record1;
 extern xdata uint32_t tune_record2;
+
+extern uint16_t system_time_1s;
 
 /*_____ M A C R O S ________________________________________________________*/
 

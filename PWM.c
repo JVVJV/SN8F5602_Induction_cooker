@@ -116,6 +116,8 @@ void PWM0_ISR(void) interrupt ISRPwm0
         }
     }
   }// heating logic end
+	
+	IRCON3 &= 0x00;
 }// PWM_ISR end
 
 

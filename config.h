@@ -33,6 +33,11 @@
 // Select desired AC frequency mode here:
 #define AC_FREQ_MODE  AC_FREQ_MODE_FORCE_60HZ
 
+#define BurstMode0 0
+#define BurstMode1 1
+#define Burst_mode BurstMode0  //BurstMode0:Normal , BurestMode1:Pattern level switch
+
+
 
 #define CURRENT_ADC_CHANNEL       19  // OPO  定義系統電流量測的 ADC 通道 
 #define VOLTAGE_ADC_CHANNEL       7   // AIN7 定義電網電壓量測的 ADC 通道
