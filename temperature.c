@@ -177,46 +177,6 @@ void Temp_Process(void)
 				temp_log_index = (temp_log_index + 1) % TEMP_LOG_SIZE;
 		}
 
-		
-	  // NTC檢查
-		if (f_ntc_monitoring) {
-				// 初始取樣設置
-				if (ntc_sample_count == 0) 
-					{
-						ntc_last_sample_time_s = system_time_1s;
-						last_IGBT_temp         = IGBT_TEMP_C;
-						ntc_change_count       = 0;
-						ntc_sample_count       = 1;
-					}
-				// 每1秒讀取一次IGBT_TEMP_C
-				if (ntc_sample_count > 0 && ntc_sample_count < 30 &&
-						(uint16_t)(system_time_1s - ntc_last_sample_time_s) >= 1) 
-				{
-						ntc_last_sample_time_s++;
-						if (IGBT_TEMP_C != last_IGBT_temp) 
-							{
-								ntc_change_count++;
-								//last_IGBT_temp = IGBT_TEMP_C;
-							}
-						ntc_sample_count++;
-				}
-				// 30 秒停止檢查並判斷
-				if (ntc_sample_count >= 30) 
-					{
-						f_ntc_monitoring  = 0;
-						ntc_sample_count  = 0;
-						if (ntc_change_count > 5) 
-							{
-								error_flags.f.NTC_error = 0; //PASS
-							} 
-						else 
-							{
-								error_flags.f.NTC_error = 1; //FAIL
-							}
-					}
-		}
-
-		
     // Overheat protection
     if (IGBT_TEMP_C > IGBT_TEMP_UPPER_LIMIT) {
       error_flags.f.IGBT_overheat = 1;
@@ -227,8 +187,46 @@ void Temp_Process(void)
     // Sensor fault detection
     if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
       error_flags.f.IGBT_sensor_fault = 1;
-    } else {
-      error_flags.f.IGBT_sensor_fault = 0;
+    } 
+    else 
+    { // 只有在極端值正常時，才檢查變動
+      if (f_ntc_monitoring) 
+      {
+				// 初始取樣設置
+				if (ntc_sample_count == 0) 
+        {
+          ntc_last_sample_time_s = system_time_1s;
+          last_IGBT_temp         = IGBT_TEMP_C;
+          ntc_change_count       = 0;
+          ntc_sample_count       = 1;
+        }
+				// 每1秒讀取一次IGBT_TEMP_C
+				if (ntc_sample_count > 0 && ntc_sample_count < 30 &&
+						(uint16_t)(system_time_1s - ntc_last_sample_time_s) >= 1) 
+				{
+          ntc_last_sample_time_s++;
+          if (IGBT_TEMP_C != last_IGBT_temp) 
+          {
+            ntc_change_count++;
+            //last_IGBT_temp = IGBT_TEMP_C;
+          }
+          ntc_sample_count++;
+				}
+				// 30 秒停止檢查並判斷
+				if (ntc_sample_count >= 30) 
+        {
+          f_ntc_monitoring  = 0;
+          ntc_sample_count  = 0;
+          if (ntc_change_count <= 5) 
+          {
+            error_flags.f.IGBT_sensor_fault = 1; //FAIL
+          } 
+          else 
+          {
+            error_flags.f.IGBT_sensor_fault = 0; //PASS
+          }
+        }
+      }
     }
     
     // Heat warning zone and fan control
@@ -267,17 +265,18 @@ void Temp_Process(void)
   }
 }
 
-void Print_All_IGBT_Temps(void)
-{
-	uint8_t i;
-    // idx=0 最舊、idx=49 最新
-    for (i = 0; i < TEMP_LOG_SIZE; i++) {
-        // 計算環狀緩衝裡位置
-        int latest_pos = (temp_log_index + TEMP_LOG_SIZE - 1) % TEMP_LOG_SIZE;
-        int pos = (latest_pos + TEMP_LOG_SIZE - i) % TEMP_LOG_SIZE;
-        int temp = igbt_temp_log[pos];
 
-        // 這裡用 printf，或改成你的顯示方式
-        //printf("IGBT_TEMP_LOG[%2d] = %d\n", i, temp);
-    }
-}
+//void Print_All_IGBT_Temps(void)
+//{
+//	uint8_t i;
+//    // idx=0 最舊、idx=49 最新
+//    for (i = 0; i < TEMP_LOG_SIZE; i++) {
+//        // 計算環狀緩衝裡位置
+//        int latest_pos = (temp_log_index + TEMP_LOG_SIZE - 1) % TEMP_LOG_SIZE;
+//        int pos = (latest_pos + TEMP_LOG_SIZE - i) % TEMP_LOG_SIZE;
+//        int temp = igbt_temp_log[pos];
+
+//        // 這裡用 printf，或改成你的顯示方式
+//        //printf("IGBT_TEMP_LOG[%2d] = %d\n", i, temp);
+//    }
+//}

@@ -52,7 +52,7 @@ void I2C_Communication(void) {
           default:   power_setting = 0;       break; // Invalid data
         }
 				
-				 // === ¢D\2vAU¡±o?a¡ÓO¢XE NTC oE¡Ó¡Ó ===
+				 // === 
 					if (power_setting != last_power_setting && power_setting > 0) {
 							last_power_setting = power_setting;
 							f_ntc_monitoring = 1;
