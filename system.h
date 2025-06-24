@@ -93,6 +93,8 @@ typedef enum {
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit ISR_f_125us;
 extern volatile uint8_t system_ticks;
+extern uint16_t system_time_1ms;
+extern uint16_t system_time_1s;
 extern volatile uint8_t pot_pulse_cnt;   // 鍋具脈衝計數器
 
 extern ErrorFlags error_flags;
@@ -130,8 +132,6 @@ extern PotAnalyzeState pot_analyze_state;
 extern xdata uint16_t tune_cnt;
 extern xdata uint32_t tune_record1;
 extern xdata uint32_t tune_record2;
-
-extern uint16_t system_time_1s; //HCW***
 
 /*_____ M A C R O S ________________________________________________________*/
 

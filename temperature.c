@@ -28,14 +28,12 @@ static bit f_temp_updated = 0;      // 溫度變數更新旗標
 
 int xdata igbt_temp_log[TEMP_LOG_SIZE];
 unsigned char idata temp_log_index = 0;
-extern unsigned int system_time_1ms;           // from system.c
-static unsigned int xdata last_log_time_ms = 0;
 static uint16_t last_log_time_s = 0;  // 每秒 log 時間戳
+static uint32_t last_power_setting = 0;
 
 // === NTC 監控用變數 ===
 bit    f_ntc_monitoring;
 uint8_t ntc_change_count;
-uint16_t ntc_monitor_start_time_s;
 int    last_IGBT_temp;
 
 // 每秒取樣用變數
@@ -170,6 +168,16 @@ void Temp_Process(void)
     /* Interpolate between both points. */
     IGBT_TEMP_C = p1 - (((p1-p2)*(IGBT_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
   
+    // === 
+    if (power_setting != last_power_setting && power_setting > 0) {
+        last_power_setting = power_setting;
+        f_ntc_monitoring = 1;
+        ntc_change_count = 0;
+        last_IGBT_temp = IGBT_TEMP_C;
+        ntc_sample_count = 1;
+        ntc_last_sample_time_s = system_time_1s;
+    }
+    
 	  // 每1秒記錄1次IGBT_TEMP_C
 		if (system_time_1s != last_log_time_s) {
 				last_log_time_s = system_time_1s;
@@ -192,14 +200,6 @@ void Temp_Process(void)
     { // 只有在極端值正常時，才檢查變動
       if (f_ntc_monitoring) 
       {
-				// 初始取樣設置
-				if (ntc_sample_count == 0) 
-        {
-          ntc_last_sample_time_s = system_time_1s;
-          last_IGBT_temp         = IGBT_TEMP_C;
-          ntc_change_count       = 0;
-          ntc_sample_count       = 1;
-        }
 				// 每1秒讀取一次IGBT_TEMP_C
 				if (ntc_sample_count > 0 && ntc_sample_count < 30 &&
 						(uint16_t)(system_time_1s - ntc_last_sample_time_s) >= 1) 

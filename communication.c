@@ -20,7 +20,6 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 uint8_t i2c_status_code = I2C_STATUS_NORMAL;  // default normal status
-static uint32_t last_power_setting = 0;
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -51,16 +50,6 @@ void I2C_Communication(void) {
           case 0x4F: power_setting = 2000000; break; // HCW*** not support 2.2KW
           default:   power_setting = 0;       break; // Invalid data
         }
-				
-				 // === 
-					if (power_setting != last_power_setting && power_setting > 0) {
-							last_power_setting = power_setting;
-							f_ntc_monitoring = 1;
-							ntc_change_count = 0;
-							ntc_monitor_start_time_s = system_time_1s;
-							last_IGBT_temp = IGBT_TEMP_C;
-					}
-				
       } else {
         // No response: count failures and reinit after 6
         if (++i2c_comm_fail_count >= 6) {

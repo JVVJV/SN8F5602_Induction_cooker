@@ -11,7 +11,6 @@ extern int idata IGBT_TEMP_C;      // IGBT temperature
 extern int idata TOP_TEMP_C;       // Surface temperature
 extern bit    f_ntc_monitoring;
 extern uint8_t ntc_change_count;
-extern uint16_t ntc_monitor_start_time_s;
 extern int    last_IGBT_temp;
 
 /*_____ M A C R O S ________________________________________________________*/
