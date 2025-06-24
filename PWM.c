@@ -32,6 +32,10 @@ void PWM_Init(void)
   //PW0M1 = mskSFDL;
   
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS;
+  
+  // PWM0 Ineterrupt Priority, Group0 -> LEVEL3
+  IP0 = (0<<5) | (0<<4) | (0<<3) | (0<<2) | (0<<1) | (1<<0);  
+  IP1 = (0<<5) | (0<<4) | (0<<3) | (0<<2) | (0<<1) | (1<<0);  
 }
 
 
@@ -65,7 +69,7 @@ void PWM0_ISR(void) interrupt ISRPwm0
         PW0D = SLOWDOWN_PWM_MAX_WIDTH;
     }
     
-    return;
+    goto ISR_EXIT;
   }
 
   // In heating logic
@@ -83,7 +87,7 @@ void PWM0_ISR(void) interrupt ISRPwm0
       if (!f_jitter_active) 
       {PWM_INTERRUPT_DISABLE; }
       
-      return;
+      goto ISR_EXIT;
     }
     
     // Power_Control request (กำ1)
@@ -100,7 +104,7 @@ void PWM0_ISR(void) interrupt ISRPwm0
       if (!f_jitter_active) 
       {PWM_INTERRUPT_DISABLE; }
       
-      return;
+      goto ISR_EXIT;
     }
     
     // Frequency jitter control
@@ -116,6 +120,10 @@ void PWM0_ISR(void) interrupt ISRPwm0
         }
     }
   }// heating logic end
+  
+  ISR_EXIT:
+  IRCON3 &= ~(1<<2); //PW0F_CLEAR
+  
 }// PWM_ISR end
 
 
