@@ -13,6 +13,7 @@
 #include "config.h"
 #include "ADC.h"
 #include "system.h"
+#include "power.h"
 #include "buzzer.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
@@ -29,16 +30,15 @@ static bit f_temp_updated = 0;            // 溫度變數更新旗標
 //int xdata igbt_temp_log[TEMP_LOG_SIZE];
 //unsigned char idata temp_log_index = 0;
 static uint16_t last_log_time_s = 0;  // 每秒 log 時間戳
-static uint32_t last_power_setting = 0;
 
 // === NTC 監控用變數 ===
-bit    f_ntc_monitoring;
-uint8_t ntc_change_count;
-idata int last_IGBT_temp = 0;
+static bit f_NTC_monitoring;
+static uint8_t ntc_change_count;
+static idata int last_IGBT_temp = 0;
+static uint32_t last_power_setting = 0;
 
 // 每秒取樣用變數
-uint8_t  ntc_sample_count          = 0;
-uint16_t ntc_last_sample_time_s    = 0;
+uint8_t ntc_last_sample_time_s = 0;
 
 
 /**
@@ -153,6 +153,7 @@ void Temp_Measure(void)
 void Temp_Process(void)
 {
   int p1,p2;
+  static uint8_t elapsed;
   
   // 檢查是否有更新的溫度數據
   if (f_temp_updated) {
@@ -168,14 +169,15 @@ void Temp_Process(void)
     /* Interpolate between both points. */
     IGBT_TEMP_C = p1 - (((p1-p2)*(IGBT_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
   
-    // === 
-    if (power_setting != last_power_setting && power_setting > 0) {
+    // Start NTC monitoring on power change
+    if (power_setting != last_power_setting && f_heating_initialized) 
+    {
         last_power_setting = power_setting;
-        f_ntc_monitoring = 1;
+      
+        f_NTC_monitoring = 1;
         ntc_change_count = 0;
         last_IGBT_temp = IGBT_TEMP_C;
-        ntc_sample_count = 1;
-        ntc_last_sample_time_s = system_time_1s;
+        ntc_last_sample_time_s = (uint8_t)system_time_1s;
     }
     
 //	  // 每1秒記錄1次IGBT_TEMP_C
@@ -192,35 +194,34 @@ void Temp_Process(void)
       error_flags.f.IGBT_overheat = 0;
     }
 
-    // Sensor fault detection
+    // Sensor fault1 detection, Abnormal value
     if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
       error_flags.f.IGBT_sensor_fault1 = 1;
     } else {
       error_flags.f.IGBT_sensor_fault1 = 0;
     }
     
-    
-    if (f_ntc_monitoring) 
+    // Sensor fault2 detection, Temperature not changed
+    if (f_NTC_monitoring) 
     {
-      // 每1秒讀取一次IGBT_TEMP_C
-      if (ntc_sample_count > 0 && ntc_sample_count < 30 &&
-          (uint16_t)(system_time_1s - ntc_last_sample_time_s) >= 1) 
+      elapsed = (uint8_t)system_time_1s - ntc_last_sample_time_s;
+      if (elapsed < 30) 
       {
-        ntc_last_sample_time_s++;
-        if (IGBT_TEMP_C != last_IGBT_temp) 
+        // 只有在時間進位時（1秒鐘後）才記錄
+        if ((uint8_t)system_time_1s != ntc_last_sample_time_s) 
         {
-          ntc_change_count++;
-          //last_IGBT_temp = IGBT_TEMP_C;
+          ntc_last_sample_time_s = system_time_1s; // 更新上次樣本時間
+          if (IGBT_TEMP_C != last_IGBT_temp) 
+              ntc_change_count++;
+          
+          last_IGBT_temp = IGBT_TEMP_C; // 更新上次溫度
         }
-        ntc_sample_count++;
       }
-      // 30 秒停止檢查並判斷
-      if (ntc_sample_count >= 30) 
+      else 
       {
-        f_ntc_monitoring  = 0;
-        ntc_sample_count  = 0;
-        if (ntc_change_count <= 5) 
-        { error_flags.f.IGBT_sensor_fault2 = 1; } //FAIL
+        f_NTC_monitoring = 0;
+        if (ntc_change_count <= 5)
+          error_flags.f.IGBT_sensor_fault2 = 1;
       }
     }
     

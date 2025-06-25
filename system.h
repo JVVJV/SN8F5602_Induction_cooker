@@ -26,7 +26,7 @@ typedef union {
     struct {
       uint8_t IGBT_overheat : 1;
       uint8_t TOP_overheat : 1;
-      uint8_t IGBT_sensor_fault1 : 1; // Overheat
+      uint8_t IGBT_sensor_fault1 : 1; // Abnormal value
       uint8_t IGBT_sensor_fault2 : 1; // Temperature not changed
       uint8_t TOP_sensor_fault : 1;
       uint8_t Pot_missing : 1;
