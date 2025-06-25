@@ -17,24 +17,24 @@
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define TEMP_ACCUMULATE_COUNT 8
-#define TEMP_LOG_SIZE 50
+//#define TEMP_LOG_SIZE 50
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 uint16_t idata IGBT_TEMP_code = 0;        // 目前IGBT溫度 AD_code
 uint16_t idata TOP_TEMP_code = 0;         // 目前表面溫度 AD_code
 int idata IGBT_TEMP_C = 0;                // 目前IGBT溫度 度C
 int idata TOP_TEMP_C = 0;                 // 目前表面溫度 度C
-static bit f_temp_updated = 0;      // 溫度變數更新旗標
+static bit f_temp_updated = 0;            // 溫度變數更新旗標
 
-int xdata igbt_temp_log[TEMP_LOG_SIZE];
-unsigned char idata temp_log_index = 0;
+//int xdata igbt_temp_log[TEMP_LOG_SIZE];
+//unsigned char idata temp_log_index = 0;
 static uint16_t last_log_time_s = 0;  // 每秒 log 時間戳
 static uint32_t last_power_setting = 0;
 
 // === NTC 監控用變數 ===
 bit    f_ntc_monitoring;
 uint8_t ntc_change_count;
-int    last_IGBT_temp;
+idata int last_IGBT_temp = 0;
 
 // 每秒取樣用變數
 uint8_t  ntc_sample_count          = 0;
@@ -178,12 +178,12 @@ void Temp_Process(void)
         ntc_last_sample_time_s = system_time_1s;
     }
     
-	  // 每1秒記錄1次IGBT_TEMP_C
-		if (system_time_1s != last_log_time_s) {
-				last_log_time_s = system_time_1s;
-				igbt_temp_log[temp_log_index] = IGBT_TEMP_C;
-				temp_log_index = (temp_log_index + 1) % TEMP_LOG_SIZE;
-		}
+//	  // 每1秒記錄1次IGBT_TEMP_C
+//		if (system_time_1s != last_log_time_s) {
+//				last_log_time_s = system_time_1s;
+//				igbt_temp_log[temp_log_index] = IGBT_TEMP_C;
+//				temp_log_index = (temp_log_index + 1) % TEMP_LOG_SIZE;
+//		}
 
     // Overheat protection
     if (IGBT_TEMP_C > IGBT_TEMP_UPPER_LIMIT) {
@@ -194,38 +194,33 @@ void Temp_Process(void)
 
     // Sensor fault detection
     if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
-      error_flags.f.IGBT_sensor_fault = 1;
-    } 
-    else 
-    { // 只有在極端值正常時，才檢查變動
-      if (f_ntc_monitoring) 
+      error_flags.f.IGBT_sensor_fault1 = 1;
+    } else {
+      error_flags.f.IGBT_sensor_fault1 = 0;
+    }
+    
+    
+    if (f_ntc_monitoring) 
+    {
+      // 每1秒讀取一次IGBT_TEMP_C
+      if (ntc_sample_count > 0 && ntc_sample_count < 30 &&
+          (uint16_t)(system_time_1s - ntc_last_sample_time_s) >= 1) 
       {
-				// 每1秒讀取一次IGBT_TEMP_C
-				if (ntc_sample_count > 0 && ntc_sample_count < 30 &&
-						(uint16_t)(system_time_1s - ntc_last_sample_time_s) >= 1) 
-				{
-          ntc_last_sample_time_s++;
-          if (IGBT_TEMP_C != last_IGBT_temp) 
-          {
-            ntc_change_count++;
-            //last_IGBT_temp = IGBT_TEMP_C;
-          }
-          ntc_sample_count++;
-				}
-				// 30 秒停止檢查並判斷
-				if (ntc_sample_count >= 30) 
+        ntc_last_sample_time_s++;
+        if (IGBT_TEMP_C != last_IGBT_temp) 
         {
-          f_ntc_monitoring  = 0;
-          ntc_sample_count  = 0;
-          if (ntc_change_count <= 5) 
-          {
-            error_flags.f.IGBT_sensor_fault = 1; //FAIL
-          } 
-          else 
-          {
-            error_flags.f.IGBT_sensor_fault = 0; //PASS
-          }
+          ntc_change_count++;
+          //last_IGBT_temp = IGBT_TEMP_C;
         }
+        ntc_sample_count++;
+      }
+      // 30 秒停止檢查並判斷
+      if (ntc_sample_count >= 30) 
+      {
+        f_ntc_monitoring  = 0;
+        ntc_sample_count  = 0;
+        if (ntc_change_count <= 5) 
+        { error_flags.f.IGBT_sensor_fault2 = 1; } //FAIL
       }
     }
     
