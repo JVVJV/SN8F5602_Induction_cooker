@@ -48,6 +48,10 @@ extern PeriodicHeatState periodic_heat_state;
 extern FrequencyJitterState Frequency_jitter_state;
 extern volatile uint8_t jitter_adjust_cnt;
 extern bit f_jitter_active;
+extern volatile bit PW0D_req_quick_surge;
+extern bit f_power_switching;
+extern uint8_t quick_surge_pwm_drop;
+extern bit f_orig_power_set;
 
 /*_____ M A C R O S ________________________________________________________*/
 

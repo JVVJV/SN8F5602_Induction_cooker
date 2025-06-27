@@ -15,6 +15,7 @@
 #include "PWM.h"
 #include "ADC.h"
 #include "buzzer.h"
+#include "config.h"
 #include <math.h>
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
@@ -22,15 +23,19 @@
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 volatile bit f_heating_initialized = 0; // Indicates whether heating has been initialized
+volatile bit PW0D_req_quick_surge = 0;
 bit f_power_updated = 0;
 
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
 uint16_t current_adc_new = 0;  // Store the measured current value (adc_code)
 uint16_t PW0D_backup = 0;
+uint8_t quick_surge_pwm_drop = 10;  // 初始縮減幅度
 static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
+static uint16_t last_voltage = 0;
+static uint16_t last_current = 0;
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -280,24 +285,22 @@ void Quick_Change_Detect() {
         PW0M = 0;
         PWM_INTERRUPT_DISABLE;
     }
+		
+		if (f_power_switching) return;
     
-//    // Check if voltage changes rapidly
-//    if (abs(voltage_IIR_new - last_voltage) > VOLTAGE_CHANGE_THRESHOLD) {
-//        error_flags.f.Voltage_quick_change = 1;  // Voltage rapid change
-//    } else {
-//        error_flags.f.Voltage_quick_change = 0;  // Clear rapid change flag
-//    }
+    // Check if voltage changes rapidly	
+		if (abs(voltage_RMS_V - last_voltage) > VOLTAGE_CHANGE_THRESHOLD) {
+			PW0D_req_quick_surge = 1;
+			PWM_INTERRUPT_ENABLE;
+		}
+		if (abs(current_RMS_mA - last_current) > CURRENT_CHANGE_THRESHOLD) {
+			PW0D_req_quick_surge = 1;
+			PWM_INTERRUPT_ENABLE;
+		}
 
-//    // Check if current changes rapidly
-//    if (abs(current_RMS_mA - last_current) > CURRENT_CHANGE_THRESHOLD) {
-//        error_flags.f.Current_quick_large = 1;  // Current rapid change
-//    } else {
-//        error_flags.f.Current_quick_large = 0;  // Clear rapid change flag
-//    }
-
-//    // Update previous measurement values
-//    last_voltage = voltage_RMS_V;
-//    last_current = current_RMS_mA;
+    // Update previous measurement values
+    last_voltage = voltage_RMS_V;
+    last_current = current_RMS_mA;
 }
 
 
@@ -363,6 +366,10 @@ void Heat_Control(void)
     return;
   }
   
+	if (target_power != power_setting) {
+    f_power_switching = 1;  // 設定功率切換中，暫停保護機制
+  }
+	
   // Normal heating mode
   if (power_setting > 800000) {
     
@@ -628,6 +635,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   
   reset_power_read_data();
   f_heating_initialized = 1;       // Mark heating as initialized
+	f_power_switching = 0; // 清除功率切換標誌，恢復保護啟用
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
