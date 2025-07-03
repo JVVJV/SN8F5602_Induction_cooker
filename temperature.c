@@ -13,17 +13,33 @@
 #include "config.h"
 #include "ADC.h"
 #include "system.h"
+#include "power.h"
 #include "buzzer.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define TEMP_ACCUMULATE_COUNT 8
+//#define TEMP_LOG_SIZE 50
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 uint16_t idata IGBT_TEMP_code = 0;        // 目前IGBT溫度 AD_code
 uint16_t idata TOP_TEMP_code = 0;         // 目前表面溫度 AD_code
 int idata IGBT_TEMP_C = 0;                // 目前IGBT溫度 度C
 int idata TOP_TEMP_C = 0;                 // 目前表面溫度 度C
-static bit f_temp_updated = 0;      // 溫度變數更新旗標
+static bit f_temp_updated = 0;            // 溫度變數更新旗標
+
+//int xdata igbt_temp_log[TEMP_LOG_SIZE];
+//unsigned char idata temp_log_index = 0;
+static uint16_t last_log_time_s = 0;  // 每秒 log 時間戳
+
+// === NTC 監控用變數 ===
+static bit f_NTC_monitoring;
+static uint8_t ntc_change_count;
+static idata int last_IGBT_temp = 0;
+static uint32_t last_power_setting = 0;
+
+// 每秒取樣用變數
+uint8_t ntc_last_sample_time_s = 0;
+
 
 /**
 * The NTC table has 129 interpolation points.
@@ -137,6 +153,7 @@ void Temp_Measure(void)
 void Temp_Process(void)
 {
   int p1,p2;
+  static uint8_t elapsed;
   
   // 檢查是否有更新的溫度數據
   if (f_temp_updated) {
@@ -151,7 +168,25 @@ void Temp_Process(void)
     
     /* Interpolate between both points. */
     IGBT_TEMP_C = p1 - (((p1-p2)*(IGBT_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
+  
+    // Start NTC monitoring on power change
+    if (power_setting != last_power_setting && f_heating_initialized) 
+    {
+        last_power_setting = power_setting;
+      
+        f_NTC_monitoring = 1;
+        ntc_change_count = 0;
+        last_IGBT_temp = IGBT_TEMP_C;
+        ntc_last_sample_time_s = (uint8_t)system_time_1s;
+    }
     
+//	  // 每1秒記錄1次IGBT_TEMP_C
+//		if (system_time_1s != last_log_time_s) {
+//				last_log_time_s = system_time_1s;
+//				igbt_temp_log[temp_log_index] = IGBT_TEMP_C;
+//				temp_log_index = (temp_log_index + 1) % TEMP_LOG_SIZE;
+//		}
+
     // Overheat protection
     if (IGBT_TEMP_C > IGBT_TEMP_UPPER_LIMIT) {
       error_flags.f.IGBT_overheat = 1;
@@ -159,11 +194,35 @@ void Temp_Process(void)
       error_flags.f.IGBT_overheat = 0;
     }
 
-    // Sensor fault detection
+    // Sensor fault1 detection, Abnormal value
     if (IGBT_TEMP_C < IGBT_TEMP_LOWER_LIMIT) {
-      error_flags.f.IGBT_sensor_fault = 1;
+      error_flags.f.IGBT_sensor_fault1 = 1;
     } else {
-      error_flags.f.IGBT_sensor_fault = 0;
+      error_flags.f.IGBT_sensor_fault1 = 0;
+    }
+    
+    // Sensor fault2 detection, Temperature not changed
+    if (f_NTC_monitoring) 
+    {
+      elapsed = (uint8_t)system_time_1s - ntc_last_sample_time_s;
+      if (elapsed < 30) 
+      {
+        // 只有在時間進位時（1秒鐘後）才記錄
+        if ((uint8_t)system_time_1s != ntc_last_sample_time_s) 
+        {
+          ntc_last_sample_time_s = system_time_1s; // 更新上次樣本時間
+          if (IGBT_TEMP_C != last_IGBT_temp) 
+              ntc_change_count++;
+          
+          last_IGBT_temp = IGBT_TEMP_C; // 更新上次溫度
+        }
+      }
+      else 
+      {
+        f_NTC_monitoring = 0;
+        if (ntc_change_count <= 5)
+          error_flags.f.IGBT_sensor_fault2 = 1;
+      }
     }
     
     // Heat warning zone and fan control
@@ -202,3 +261,18 @@ void Temp_Process(void)
   }
 }
 
+
+//void Print_All_IGBT_Temps(void)
+//{
+//	uint8_t i;
+//    // idx=0 最舊、idx=49 最新
+//    for (i = 0; i < TEMP_LOG_SIZE; i++) {
+//        // 計算環狀緩衝裡位置
+//        int latest_pos = (temp_log_index + TEMP_LOG_SIZE - 1) % TEMP_LOG_SIZE;
+//        int pos = (latest_pos + TEMP_LOG_SIZE - i) % TEMP_LOG_SIZE;
+//        int temp = igbt_temp_log[pos];
+
+//        // 這裡用 printf，或改成你的顯示方式
+//        //printf("IGBT_TEMP_LOG[%2d] = %d\n", i, temp);
+//    }
+//}

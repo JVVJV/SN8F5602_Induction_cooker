@@ -35,6 +35,7 @@ bit f_pot_detected = 0;
 //bit f_pot_analyzed = 0;
 //uint16_t recorded_1000W_PW0D = 0; // pot_analyze not use now.
 bit f_block_occurred = 0;
+bit f_power_switching = 0;
 
 uint32_t power_setting = 0;
 uint32_t target_power = 0;            // 目標功率
