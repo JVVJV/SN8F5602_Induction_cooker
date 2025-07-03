@@ -286,15 +286,15 @@ void Quick_Change_Detect() {
         PWM_INTERRUPT_DISABLE;
     }
 		
-		if (f_power_switching) return;
+		if (f_power_switching) return; //HCW*** ??
     
     // Check if voltage changes rapidly	
 		if (abs(voltage_RMS_V - last_voltage) > VOLTAGE_CHANGE_THRESHOLD) {
-			PW0D_req_quick_surge = 1;
+			PW0D_req_quick_surge = 1; //HCW*** no flag??
 			PWM_INTERRUPT_ENABLE;
 		}
 		if (abs(current_RMS_mA - last_current) > CURRENT_CHANGE_THRESHOLD) {
-			PW0D_req_quick_surge = 1;
+			PW0D_req_quick_surge = 1; //HCW*** no flag??
 			PWM_INTERRUPT_ENABLE;
 		}
 
@@ -366,7 +366,7 @@ void Heat_Control(void)
     return;
   }
   
-	if (target_power != power_setting) {
+	if (target_power != power_setting) {  //HCW***
     f_power_switching = 1;  // 設定功率切換中，暫停保護機制
   }
 	
