@@ -17,5 +17,4 @@ void Temp_Measure(void );
 void Temp_Process(void);
 //void Print_All_IGBT_Temps(void);  //HCW** 
 
-
 #endif  // __TEMP_H__

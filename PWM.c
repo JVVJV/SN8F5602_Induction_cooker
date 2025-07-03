@@ -106,6 +106,24 @@ void PWM0_ISR(void) interrupt ISRPwm0
       
       goto ISR_EXIT;
     }
+		
+		if (PW0D_req_quick_surge) {
+      P10 = ~P10;
+			if ((PW0D >= (quick_surge_pwm_drop  + PWM_MIN_WIDTH))) {
+        PW0D -= quick_surge_pwm_drop ;  // 比 CMP2 減少更大幅度
+    } else {
+        PW0D = PWM_MIN_WIDTH;
+    }
+
+		PW0D_req_quick_surge = 0;
+		
+    if (!f_jitter_active) {
+        PWM_INTERRUPT_DISABLE;
+    }
+
+			return;
+		}
+		
     
     // Frequency jitter control
     if (Frequency_jitter_state == JITTER_DECREASE) {
