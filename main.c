@@ -24,6 +24,7 @@
 #include "temperature.h"
 #include "buzzer.h"
 #include "I2C.h"
+#include "timer2.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define SYSTEM_TICKS_PER_10MS   80    // Count per 10 ms (125 us * 80 = 10 ms)
@@ -59,6 +60,7 @@ void main (void)
   SystemCLK_Init();       // Initialize system frequency
   GPIO_Init();            // Initialize GPIO configuration
   Timer0_Init();          // Initialize Timer0 for 125 us interrupts
+	Timer2_Init();          // Initialize Timer2 for T2SF
   Comparator_Init();      // Initialize comparators (CM0, CM1, CM2)
   OP_Amp_Init();          // Initialize operational amplifiers for current measurement
   PWM_Init();             // Initialize PWM for IGBT driving
@@ -87,12 +89,12 @@ void main (void)
   while (1) {
     WDTR = 0x5A; // Clear watchdog
     I2C_Communication();
-    
+			
     // 125 us timing logic
     if (ISR_f_125us) {
       ISR_f_125us = 0;  // Clear 125 us flag
-            
-      // Update system time
+      
+			// Update system time
       Update_System_Time();  
       
       // Regular tasks
@@ -149,6 +151,7 @@ void main (void)
     // Burst mode
     Periodic_Power_Control();
     
+
   } //while end
  
 }
