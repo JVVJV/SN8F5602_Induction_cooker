@@ -67,10 +67,9 @@
                                             // may increase the proportion of hard-switching operation, 
                                             // leading to IGBT overheating.
 
-
-
-#define VOLTAGE_CHANGE_THRESHOLD 20   // 電壓變化 > 12V 視為快速變化
-#define CURRENT_CHANGE_THRESHOLD 9000 // 電流變化 > 9000mA (9A) 視為快速變化 HCW***
+#define VOLTAGE_CHANGE_THRESHOLD 20     // 電壓變化 > 12V 視為快速變化
+#define CURRENT_CHANGE_THRESHOLD 1000   // 電流變化 > 1000mA (1A) 視為快速變化 HCW***
+#define QUICK_SURGE_MODIFY_WIDTH 10
 
 
 

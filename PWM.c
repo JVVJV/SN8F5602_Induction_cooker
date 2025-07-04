@@ -74,6 +74,23 @@ void PWM0_ISR(void) interrupt ISRPwm0
 
   // In heating logic
   if (f_heating_initialized) {
+    // Quick change protect request (±1)
+		if (PW0D_req_quick_surge) {
+			if ((PW0D >= (QUICK_SURGE_MODIFY_WIDTH + PWM_MIN_WIDTH))) {
+        PW0D -= QUICK_SURGE_MODIFY_WIDTH;
+      } else {
+        PW0D = PWM_MIN_WIDTH;
+      }
+
+      PW0D_req_quick_surge = 0;
+		
+      if (!f_jitter_active) {
+        PWM_INTERRUPT_DISABLE;
+      }
+
+			goto ISR_EXIT;
+		}
+    
     // IGBT_High-voltage protection (decrease PW0D)
     if (PW0D_req_CMP2_isr) {
       PW0D_req_CMP2_isr = FALSE;
@@ -107,24 +124,6 @@ void PWM0_ISR(void) interrupt ISRPwm0
       goto ISR_EXIT;
     }
 		
-		if (PW0D_req_quick_surge) {
-      P10 = ~P10;
-			if ((PW0D >= (quick_surge_pwm_drop  + PWM_MIN_WIDTH))) {
-        PW0D -= quick_surge_pwm_drop ;  // 比 CMP2 減少更大幅度
-    } else {
-        PW0D = PWM_MIN_WIDTH;
-    }
-
-		PW0D_req_quick_surge = 0;
-		
-    if (!f_jitter_active) {
-        PWM_INTERRUPT_DISABLE;
-    }
-
-			return;
-		}
-		
-    
     // Frequency jitter control
     if (Frequency_jitter_state == JITTER_DECREASE) {
       if (PW0D > PWM_MIN_WIDTH) {

@@ -30,7 +30,7 @@ uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
 uint16_t current_adc_new = 0;  // Store the measured current value (adc_code)
 uint16_t PW0D_backup = 0;
-uint8_t quick_surge_pwm_drop = 10;  // 初始縮減幅度
+
 static uint8_t pwr_read_cnt = 0;      // Number of measurements during heating
 static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
@@ -239,14 +239,8 @@ void Measure_Base_Current(void) {
 #define CURRENT_UPPER_LIMIT_mA      9600    // Over-current threshold: 9.6A = 9600 mA
 #define CURRENT_RECOVER_LIMIT_mA    9400    // Over-current recovery: 9.4A
 
-//#define VOLTAGE_CHANGE_THRESHOLD 20    // Voltage rapid change threshold (unit: V)
-//#define CURRENT_CHANGE_THRESHOLD 10    // Current rapid change threshold (unit: A)
 
 void Quick_Change_Detect() {
-  // 前一次的測量值
-//  static uint16_t last_voltage = 0;     // Previous voltage value
-//  static uint16_t last_current = 0;     // Previous current value
-
     // === 過壓檢查與回復 ===
     if (error_flags.f.Over_voltage) {
         if (voltage_RMS_V < VOLTAGE_RECOVER_HIGH) {
@@ -288,16 +282,22 @@ void Quick_Change_Detect() {
 		
 		if (f_power_switching) return; //HCW*** ??
     
-    // Check if voltage changes rapidly	
-		if (abs(voltage_RMS_V - last_voltage) > VOLTAGE_CHANGE_THRESHOLD) {
-			PW0D_req_quick_surge = 1; //HCW*** no flag??
-			PWM_INTERRUPT_ENABLE;
-		}
-		if (abs(current_RMS_mA - last_current) > CURRENT_CHANGE_THRESHOLD) {
-			PW0D_req_quick_surge = 1; //HCW*** no flag??
-			PWM_INTERRUPT_ENABLE;
-		}
-
+    // Check if the voltage increases rapidly	
+    if (voltage_RMS_V > last_voltage) {
+      unsigned int diff = voltage_RMS_V - last_voltage;
+      if (diff > VOLTAGE_CHANGE_THRESHOLD) {
+          PW0D_req_quick_surge = 1;
+          PWM_INTERRUPT_ENABLE;
+      }
+    }
+    // Check if the current increases rapidly
+    if (current_RMS_mA > last_current) {
+      unsigned int diff = current_RMS_mA - last_current;
+      if (diff > CURRENT_CHANGE_THRESHOLD) {
+          PW0D_req_quick_surge = 1;
+          PWM_INTERRUPT_ENABLE;
+      }
+    }
     // Update previous measurement values
     last_voltage = voltage_RMS_V;
     last_current = current_RMS_mA;
@@ -635,7 +635,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   
   reset_power_read_data();
   f_heating_initialized = 1;       // Mark heating as initialized
-	f_power_switching = 0; // 清除功率切換標誌，恢復保護啟用
+  
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
