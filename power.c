@@ -241,7 +241,7 @@ void Measure_Base_Current(void) {
 
 
 void Quick_Change_Detect() {
-    // === 過壓檢查與回復 ===
+    // === Over-voltage check and recovery ===
     if (error_flags.f.Over_voltage) {
         if (voltage_RMS_V < VOLTAGE_RECOVER_HIGH) {
             error_flags.f.Over_voltage = 0;
@@ -254,7 +254,7 @@ void Quick_Change_Detect() {
         PWM_INTERRUPT_DISABLE;
     }
   
-    // === 欠壓檢查與回復 ===
+    // === Under-voltage check and recovery ===
     if (error_flags.f.Low_voltage) {
         if (voltage_RMS_V > VOLTAGE_RECOVER_LOW) {
             error_flags.f.Low_voltage = 0;
@@ -267,7 +267,7 @@ void Quick_Change_Detect() {
         PWM_INTERRUPT_DISABLE;
     }
     
-    // === 過電流檢查與回復 ===
+    // === Over-current check and recovery ===
     if (error_flags.f.Over_current) {
         if (current_RMS_mA < CURRENT_RECOVER_LIMIT_mA) {
             error_flags.f.Over_current = 0;
@@ -280,27 +280,35 @@ void Quick_Change_Detect() {
         PWM_INTERRUPT_DISABLE;
     }
 		
-		if (f_power_switching) return; //HCW*** ??
-    
-    // Check if the voltage increases rapidly	
-    if (voltage_RMS_V > last_voltage) {
-      unsigned int diff = voltage_RMS_V - last_voltage;
-      if (diff > VOLTAGE_CHANGE_THRESHOLD) {
-          PW0D_req_quick_surge = 1;
-          PWM_INTERRUPT_ENABLE;
+    // === Power switching status check ===
+    if (f_power_switching) {
+      if (cntdown_timer_expired(CNTDOWN_TIMER_POWER_SWITCHING)) {
+        f_power_switching = 0; // Clear the power switching flag
       }
-    }
-    // Check if the current increases rapidly
-    if (current_RMS_mA > last_current) {
-      unsigned int diff = current_RMS_mA - last_current;
-      if (diff > CURRENT_CHANGE_THRESHOLD) {
-          PW0D_req_quick_surge = 1;
-          PWM_INTERRUPT_ENABLE;
+    } else {
+      // Only check for rapid voltage/current increases when not in power switching mode
+      
+      // Check if the voltage increases rapidly	
+      if (voltage_RMS_V > last_voltage) {
+        unsigned int diff = voltage_RMS_V - last_voltage;
+        if (diff > VOLTAGE_CHANGE_THRESHOLD) {
+            PW0D_req_quick_surge = 1;
+            PWM_INTERRUPT_ENABLE;
+        }
       }
-    }
-    // Update previous measurement values
-    last_voltage = voltage_RMS_V;
-    last_current = current_RMS_mA;
+      
+      // Check if the current increases rapidly
+      if (current_RMS_mA > last_current) {
+        unsigned int diff = current_RMS_mA - last_current;
+        if (diff > CURRENT_CHANGE_THRESHOLD) {
+            PW0D_req_quick_surge = 1;
+            PWM_INTERRUPT_ENABLE;
+        }
+      }
+  }
+  // Update previous measurement values  //move to other place?? HCW***
+  last_voltage = voltage_RMS_V;
+  last_current = current_RMS_mA;
 }
 
 
@@ -366,10 +374,11 @@ void Heat_Control(void)
     return;
   }
   
-	if (target_power != power_setting) {  //HCW***
+	if (target_power != power_setting) {
     f_power_switching = 1;  // 設定功率切換中，暫停保護機制
+    cntdown_timer_start(CNTDOWN_TIMER_POWER_SWITCHING, 2000); // 啟動 2 秒倒數
   }
-	
+  
   // Normal heating mode
   if (power_setting > 800000) {
     
@@ -590,7 +599,6 @@ void Periodic_Power_Control(void) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define POT_HEATING_CURRENT_DELAY_MS 16  // Delay pot detection after heating starts
 
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
 { 
@@ -629,9 +637,6 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   PW0M &= ~mskPW0EN;            // Disable PWM
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  // Enable PWM
-  
-//  // Start a 16ms countdown, not use now.
-//  cntdown_timer_start(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY , POT_HEATING_CURRENT_DELAY_MS); 
   
   reset_power_read_data();
   f_heating_initialized = 1;       // Mark heating as initialized

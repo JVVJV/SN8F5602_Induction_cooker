@@ -85,9 +85,9 @@ typedef enum {
     RECORDING
 } PotAnalyzeState;
 
-
+// Should be less than MAX_CNTDOWN_TIMERS
 #define CNTDOWN_TIMER_POT_DETECT                  0 // 鍋具檢測間隔計時器id
-#define CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY   1 // 控制 16ms 電流變化檢查倒數計時器 ID
+#define CNTDOWN_TIMER_POWER_SWITCHING             1 // 2 second power_switching
 #define CNTDOWN_TIMER_POWER_CONTROL               2 // 控制 5ms POWER_CONTROL
 #define CNTDOWN_TIMER_I2C                         3 // I2C 計時器 ID
 

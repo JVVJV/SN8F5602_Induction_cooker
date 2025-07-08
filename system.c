@@ -387,8 +387,6 @@ void Pot_Detection() {
 /**
  * @brief Checks pot presence during heating using current measurement.
  *
- * Detection is disabled for a short delay after heating starts,
- * controlled by @ref CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY.
  *
  * Sets @ref error_flags.f.Pot_missing if current is below 
  * @ref POT_PRESENT_CURRENT_MIN_mA. Does not clear the flag here.
@@ -403,11 +401,6 @@ void Pot_Detection_In_Heating(void)
   {
     return;
   }
-  
-//  // Skip detection if delay timer has not yet expired
-//  if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_HEATING_CURRENT_DELAY)) {
-//    return;
-//  }
   
   if (f_power_updated)
   {

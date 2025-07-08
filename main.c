@@ -93,7 +93,7 @@ void main (void)
       ISR_f_125us = 0;  // Clear 125 us flag
             
       // Update system time
-      Update_System_Time();  
+      Update_System_Time();
       
       // Regular tasks
       Power_read();
