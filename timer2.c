@@ -14,40 +14,34 @@
 #include "config.h"
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
-
 /*_____ D E F I N I T I O N S ______________________________________________*/
-
 
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
 
 
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define T2SF_MARGIN 64      // 2us @ 32MHz
-uint16_t T2SF_Reload = (0xFFFF -  (PWM_MAX_WIDTH + T2SF_MARGIN +1));
+#define T2SF_MARGIN     64      // 2us @ 32MHz
+#define T2SF_RELOAD     (uint16_t)(0xFFFF - (PWM_MAX_WIDTH+T2SF_MARGIN+1))
 
 void Timer2_Init() {
   // 計算 Timer0 的初始值對應 32 MHz 系統時鐘
   T2M = 0;
-  T2M |= DIV_1 | CLK_FHOSC;
+  T2M |= T2_DIV_1 | T2_CLK_FHOSC;
   
-  T2RH = (T2SF_Reload>>8);
-  T2RL = T2SF_Reload;
+  T2RH = (T2SF_RELOAD>>8);
+  T2RL = T2SF_RELOAD;
   
-  T2CH = (T2SF_Reload>>8);
-  T2CL = T2SF_Reload;
-  
-  T2CH = T2RH; 
-	T2CL = T2RL; 
+  T2CH = (T2SF_RELOAD>>8);
+  T2CL = T2SF_RELOAD;
 	
-  // clear TF2
+  // Clear TF2
   IRCON2 &= ~mskTF2;
 
   //ET2 = 1;
 
-  // 啟用 Timer2
+  // Enable Timer2
   T2M |= mskT2EN | mskT2SF ; 
 }
 
@@ -55,5 +49,5 @@ void Timer2_Init() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Timer2_ISR() interrupt ISRTimer2
 {
-    //system_ticks++;       // 增加 125 μs 計數
-   }
+    
+}

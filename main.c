@@ -13,6 +13,7 @@
 #define __XRAM_SFR_H__
 #include <SN8F5602.h>
 #include "timer0.h"
+#include "timer2.h"
 #include "comparator.h"
 #include "OP_amp.h"
 #include "gpio.h"
@@ -24,7 +25,7 @@
 #include "temperature.h"
 #include "buzzer.h"
 #include "I2C.h"
-#include "timer2.h"
+
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define SYSTEM_TICKS_PER_10MS   80    // Count per 10 ms (125 us * 80 = 10 ms)
@@ -151,7 +152,6 @@ void main (void)
     // Burst mode
     Periodic_Power_Control();
     
-
   } //while end
  
 }
