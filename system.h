@@ -35,6 +35,7 @@ typedef union {
       uint8_t Over_current : 1;
       uint8_t Voltage_quick_change : 1;
       uint8_t Current_quick_large : 1;
+      uint8_t Coil_problem : 1;
     } f;
     uint16_t all_flags; // 用於快速檢查所有標誌
 } ErrorFlags;

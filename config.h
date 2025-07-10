@@ -4,9 +4,7 @@
 /*_____ I N C L U D E S ____________________________________________________*/
 #include <SN8F5602.h>
 
-
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define ICE_DEBUG_MODE 1
@@ -49,8 +47,8 @@
 
 //#define PWM_MAX_WIDTH           960         // PWM 最大寬度   960cnt @32MHz = 30us
 //#define PWM_MAX_WIDTH           896         // PWM 最大寬度   896cnt @32MHz = 28us
-//#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us 
-#define PWM_MAX_WIDTH           704         // PWM 最大寬度   704cnt @32MHz = 22us
+#define PWM_MAX_WIDTH           768         // PWM 最大寬度   768cnt @32MHz = 24us 
+//#define PWM_MAX_WIDTH           704         // PWM 最大寬度   704cnt @32MHz = 22us
 //#define PWM_MAX_WIDTH           640         // PWM 最大寬度   640cnt @32MHz = 20us
 //#define PWM_MAX_WIDTH           512         // PWM 最大寬度   512cnt @32MHz = 16us
 //#define PWM_MAX_WIDTH           417         // PWM 最大寬度   417cnt @32MHz = 13us
@@ -67,13 +65,12 @@
                                             // may increase the proportion of hard-switching operation, 
                                             // leading to IGBT overheating.
 
-#define VOLTAGE_CHANGE_THRESHOLD 20     // 電壓變化 > 12V 視為快速變化
-#define CURRENT_CHANGE_THRESHOLD 1000   // 電流變化 > 1000mA (1A) 視為快速變化 HCW***
+#define VOLTAGE_CHANGE_THRESHOLD 20     // Voltage change > 20V is considered a rapid change
+#define CURRENT_CHANGE_THRESHOLD 1000   // Current change > 1000mA is considered a rapid change
 #define QUICK_SURGE_MODIFY_WIDTH 10
 
 
-
-#define	I2C_SLAVE_ADDRESS					0x55
-#define I2C_INTERVAL   43    // **I2C 操作間隔 43ms**
+#define	I2C_SLAVE_ADDRESS	  0x55
+#define I2C_INTERVAL        43          // I2C operation interval: 43 ms
 
 #endif  // __CONFIG_H__

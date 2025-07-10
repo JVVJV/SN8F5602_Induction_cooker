@@ -233,8 +233,8 @@ void Measure_Base_Current(void) {
 #define VOLTAGE_UPPER_LIMIT          255     // Over-voltage threshold (V)
 #define VOLTAGE_RECOVER_HIGH         245     // Over-voltage recovery (V)
 
-#define VOLTAGE_LOWER_LIMIT          170     // Under-voltage threshold (V)
-#define VOLTAGE_RECOVER_LOW          180     // Under-voltage recovery (V)
+#define VOLTAGE_LOWER_LIMIT          110     // Under-voltage threshold (V)
+#define VOLTAGE_RECOVER_LOW          120     // Under-voltage recovery (V)
 
 #define CURRENT_UPPER_LIMIT_mA      9600    // Over-current threshold: 9.6A = 9600 mA
 #define CURRENT_RECOVER_LIMIT_mA    9400    // Over-current recovery: 9.4A

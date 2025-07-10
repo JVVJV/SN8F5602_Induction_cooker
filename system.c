@@ -195,11 +195,12 @@ void Update_System_Time() {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-//#define VOLTAGE_THRESHOLD 220       // 電壓門檻值 (220V)  HCW*** not use now
-//uint16_t target_current = 0;        // 目標電流 mA  HCW*** not use now
+//uint16_t target_current = 0;        //  mA  HCW*** not use now
 
-#define HIGH_POWER_LEVEL 2200000       // 高功率標準 (2200K mW)
-#define PWM_ADJUST_QUICK_CHANGE 3      // 電壓快速變化時減少的 PWM 寬度
+#define RATED_VOLTAGE_THRESHOLD       200     // Rated voltage threshold (V)
+#define LOW_VOLTAGE_CURRENT_LIMIT   6000    // Max current when voltage is low (mA)
+#define HIGH_POWER_LEVEL            2200000 // 2200K (mW)
+#define PWM_ADJUST_QUICK_CHANGE     3       // Value to decrease PWM width when voltage changes quickly
 
 uint16_t current_RMS_mA = 0;
 uint16_t voltage_RMS_V = 0;
@@ -262,14 +263,14 @@ void Power_Control(void)
         }
     }
     
-//    // 判斷控制模式 HCW*** not use now
-//    if (voltage_RMS_V >= VOLTAGE_THRESHOLD) {
-//        // 恆電流控制模式
-//        target_current = target_power / VOLTAGE_THRESHOLD;
-//    } else {
-//        // 恆功率控制模式
-//        target_current = target_power / voltage_RMS_V;
-//    }
+    // Limit current when voltage is below the Rated Voltage
+    if (voltage_RMS_V < RATED_VOLTAGE_THRESHOLD) {
+        if(current_RMS_mA > LOW_VOLTAGE_CURRENT_LIMIT) {
+          PW0D_delta_req_pwr_ctrl = -1;
+          PWM_INTERRUPT_ENABLE;   // Force decrease PWM if current is too high
+          return;
+        }
+    }
     
 //    // Patch for PW0D shrink to 0 by CM2SF HCW**
 //    if(PW0D < PWM_MIN_WIDTH) 
@@ -305,9 +306,10 @@ void PWM_Request_Reset(void)
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define POT_CONFIRM_INTERVAL  2   // 鍋具確認倒數計時值 (2ms)
-#define POT_CHECK_INTERVAL    500 // 鍋具檢測間隔倒數計時值 (500ms)
-#define POT_PULSE_THRESHOLD   30  // 鍋具不存在的脈衝數門檻
+#define POT_CONFIRM_INTERVAL  2   // Pot confirmation countdown time (2ms)
+#define POT_CHECK_INTERVAL    500 // Pot detection interval countdown value (500ms)
+#define POT_PULSE_THRESHOLD   30  // Threshold for pot missing
+#define POT_PULSE_MIN         3   // Minimum pulses for valid pot check
 
 PotDetectionState pot_detection_state = POT_IDLE;
 volatile uint8_t pot_pulse_cnt = 0;   // 鍋具脈衝計數器
@@ -355,7 +357,10 @@ void Pot_Detection() {
       // 重啟檢鍋間隔計時器
       cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POT_CHECK_INTERVAL);
         
-      if (pot_pulse_cnt < POT_PULSE_THRESHOLD) {
+      if (pot_pulse_cnt < POT_PULSE_MIN) {
+        error_flags.f.Coil_problem = 1;  // Coil fault detected
+        
+      } else if (pot_pulse_cnt < POT_PULSE_THRESHOLD) {
         f_pot_detected = 1;
         
         //pot_detection_state = POT_ANALYZING;
