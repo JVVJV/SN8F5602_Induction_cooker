@@ -16,6 +16,7 @@
 #include "ADC.h"
 #include "buzzer.h"
 #include "config.h"
+#include "timer1.h"
 #include <math.h>
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
@@ -324,6 +325,8 @@ void stop_heating(void)
   
   PWM_Request_Reset();
   
+  Timer1_Disable();         // T1SF Disable
+  
   power_setting = 0;
   f_pot_detected = 0;       // Reset pot detection flag
   f_heating_initialized = 0;
@@ -335,6 +338,9 @@ void pause_heating(void)
   PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
   PWM_INTERRUPT_DISABLE;
   CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
+  
+  Timer1_Disable();             // T1SF Disable
+  
   f_heating_initialized = 0;    // Clear heating initialized flag
 }
 
@@ -601,7 +607,7 @@ void Periodic_Power_Control(void) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
-{ 
+{
   // Wait for AC low if required
   if (sync_ac_low) {
     ISR_f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
@@ -638,8 +644,10 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  // Enable PWM
   
+  Timer1_Enable();              // T1SF enable
+  
   reset_power_read_data();
-  f_heating_initialized = 1;       // Mark heating as initialized
+  f_heating_initialized = 1;    // Mark heating as initialized
   
 }
 

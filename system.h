@@ -37,7 +37,7 @@ typedef union {
       uint8_t Current_quick_large : 1;
       uint8_t Coil_problem : 1;
     } f;
-    uint16_t all_flags; // 用於快速檢查所有標誌
+    uint16_t all_flags;   // For quickly checking all flags
 } ErrorFlags;
 
 typedef union {
@@ -103,6 +103,7 @@ extern ErrorFlags error_flags;
 extern WarningFlags warning_flags;
 extern volatile bit ISR_f_Surge_Overvoltage_error; // By CM1
 extern volatile bit ISR_f_Surge_Overcurrent_error; // By CM4
+extern volatile bit ISR_f_Unexpected_halt; // By T1SF
 
 extern SystemState system_state;
 extern uint32_t power_setting;

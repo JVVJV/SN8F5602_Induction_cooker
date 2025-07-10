@@ -13,6 +13,7 @@
 #define __XRAM_SFR_H__
 #include <SN8F5602.h>
 #include "timer0.h"
+#include "timer1.h"
 #include "timer2.h"
 #include "comparator.h"
 #include "OP_amp.h"
@@ -61,6 +62,7 @@ void main (void)
   SystemCLK_Init();       // Initialize system frequency
   GPIO_Init();            // Initialize GPIO configuration
   Timer0_Init();          // Initialize Timer0 for 125 us interrupts
+  Timer1_Init();          // Initialize Timer1 for T1SF
 	Timer2_Init();          // Initialize Timer2 for T2SF
   Comparator_Init();      // Initialize comparators (CM0, CM1, CM2)
   OP_Amp_Init();          // Initialize operational amplifiers for current measurement

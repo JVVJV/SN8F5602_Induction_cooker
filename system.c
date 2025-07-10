@@ -621,6 +621,7 @@ ErrorFlags error_flags = {0};
 WarningFlags warning_flags = {0};
 volatile bit ISR_f_Surge_Overvoltage_error = 0;
 volatile bit ISR_f_Surge_Overcurrent_error = 0;
+volatile bit ISR_f_Unexpected_halt = 0;
 
 void Error_Process(void)
 {
@@ -628,7 +629,11 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if ( ISR_f_Surge_Overvoltage_error || ISR_f_Surge_Overcurrent_error || ISR_f_I2C_error || error_flags.all_flags ) 
+    if (  ISR_f_Surge_Overvoltage_error ||  \ 
+          ISR_f_Surge_Overcurrent_error ||  \
+          ISR_f_I2C_error ||                \
+          ISR_f_Unexpected_halt ||          \
+          error_flags.all_flags ) 
     {
       system_state = ERROR;
       
@@ -669,14 +674,19 @@ void Error_Process(void)
       }
   }
   
-  // Clear Pot_missing flag after entering ERROR state
-  if (error_flags.f.Pot_missing) {
-    error_flags.f.Pot_missing = 0;
-  }
-  
   // Clear ISR_f_I2C_error flag after entering ERROR state
   if (ISR_f_I2C_error) {
     ISR_f_I2C_error = 0;
+  }
+  
+  // Clear Unexpected_halt flag after entering ERROR state
+  if (ISR_f_Unexpected_halt) {
+    ISR_f_Unexpected_halt = 0;
+  }
+  
+  // Clear Pot_missing flag after entering ERROR state
+  if (error_flags.f.Pot_missing) {
+    error_flags.f.Pot_missing = 0;
   }
 
   // If any error flags are still active, update the error_clear_time_1s and return
