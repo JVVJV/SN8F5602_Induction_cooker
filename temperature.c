@@ -31,14 +31,13 @@ static bit f_temp_updated = 0;            // Temperature update flag
 //unsigned char idata temp_log_index = 0;
 //static uint16_t last_log_time_s = 0;  // Timestamp for per-second logging
 
-// === Variables for NTC monitoring ===
-static bit f_NTC_monitoring;
-static uint8_t ntc_change_count;
-static idata int last_IGBT_temp = 0;
-static uint32_t last_power_setting = 0;
-
-// Variables for per-second sampling
-uint8_t ntc_last_sample_time_s = 0;
+//// === Variables for NTC monitoring ===
+//static bit f_NTC_monitoring;
+//static bit f_NTC_changed;
+//static idata int NTC_last_temp = 0;
+//static uint32_t NTC_last_power = 0;
+//static uint8_t NTC_monitor_start_time_s;
+//static uint8_t NTC_monitor_last_time_s;
 
 
 /**
@@ -97,6 +96,8 @@ const int code TOP_NTC_table[129] = {
 /*_____ M A C R O S ________________________________________________________*/
 
 /*_____ F U N C T I O N S __________________________________________________*/
+void NTC_monitor_Process(void);
+
 void Temp_Measure(void)
 {
   uint16_t temp_raw;
@@ -149,15 +150,10 @@ void Temp_Measure(void)
 #define TOP_TEMP_LOWER_LIMIT  -20   // TOP lower temperature limit (°C)
 #define TOP_TEMP_RECOVERY     100   // TOP overheat recovery temperature (°C)
 
-// ==== NTC  ====
-#define NTC_MONITOR_ELAPSE_MAX   30
-#define NTC_MONITOR_CHANGE_MIN   5
-
-
 void Temp_Process(void)
 {
   int p1,p2;
-  static uint8_t elapsed;
+  //static uint8_t elapsed;
   
   // Check if there is updated temperature data
   if (f_temp_updated) {
@@ -173,17 +169,6 @@ void Temp_Process(void)
     /* Interpolate between both points. */
     IGBT_TEMP_C = p1 - (((p1-p2)*(IGBT_TEMP_code & 0x001F)) >> 5);  // = p1 + ( (p2-p1) * (IGBT_TEMP_code & 0x001F) ) / 32
   
-    // Start NTC monitoring on power change
-    if (power_setting != last_power_setting && f_heating_initialized) 
-    {
-        last_power_setting = power_setting;
-      
-        f_NTC_monitoring = 1;
-        ntc_change_count = 0;
-        last_IGBT_temp = IGBT_TEMP_C;
-        ntc_last_sample_time_s = (uint8_t)system_time_1s;
-    }
-    
 //	  // Log IGBT_TEMP_C every 1 second
 //		if (system_time_1s != last_log_time_s) {
 //				last_log_time_s = system_time_1s;
@@ -205,29 +190,8 @@ void Temp_Process(void)
       error_flags.f.IGBT_sensor_fault1 = 0;
     }
     
-    // Sensor fault2 detection, Temperature not changed
-    if (f_NTC_monitoring) 
-    {
-      elapsed = (uint8_t)system_time_1s - ntc_last_sample_time_s;
-      if (elapsed < NTC_MONITOR_ELAPSE_MAX) 
-      {
-        // Every 1 second
-        if ((uint8_t)system_time_1s != ntc_last_sample_time_s) 
-        {
-          ntc_last_sample_time_s = system_time_1s; // Update last sample time
-          if (IGBT_TEMP_C != last_IGBT_temp) 
-              ntc_change_count++;
-          
-          last_IGBT_temp = IGBT_TEMP_C; // Update last temperature
-        }
-      }
-      else 
-      {
-        f_NTC_monitoring = 0;
-        if (ntc_change_count <= NTC_MONITOR_CHANGE_MIN)
-          error_flags.f.IGBT_sensor_fault2 = 1;
-      }
-    }
+    // Sensor fault2 detection, Temperature not changed    
+    NTC_monitor_Process();
     
     // Heat warning zone and fan control
     if (IGBT_TEMP_C > IGBT_TEMP_WARNING_LIMIT) {
@@ -263,6 +227,90 @@ void Temp_Process(void)
       error_flags.f.TOP_sensor_fault = 0;
     }
   }
+}
+
+
+/**
+ * @brief NTC sensor monitoring state machine for NTC Fault2 detection.
+ *
+ * Monitors whether both temperature and power remain stable for a specified period.
+ * If so, records them as reference values. When power changes, checks if temperature reacts.
+ * If temperature remains unchanged during monitoring, sets Fault2 flag.
+ *
+ */
+
+// NTC Monitoring Parameters and Variables
+#define TEMP_STABLE_THRESHOLD      3     // Acceptable temperature fluctuation (°C)
+#define TEMP_STABLE_DURATION_S     20    // Required stable duration in seconds
+#define TEMP_MONITOR_DURATION_S    30    // Maximum monitoring duration
+
+typedef enum {
+    TEMP_IDLE = 0,         // Waiting for temperature to become stable
+    TEMP_STABLE_READY,     // Stable state detected, waiting for power change
+    TEMP_MONITORING        // Monitoring temperature response after power change
+} NTC_MONITOR_STATE;
+
+static NTC_MONITOR_STATE NTC_monitor_state = TEMP_IDLE;
+
+static int      xdata NTC_tracked_temp    = 0;
+static uint32_t xdata NTC_tracked_power   = 0;
+static int      xdata NTC_stable_temp     = 0;
+static uint32_t xdata NTC_stable_power    = 0;
+static uint8_t NTC_stable_start_time_s    = 0;
+static uint8_t NTC_monitor_start_time_s   = 0;
+
+void NTC_monitor_Process(void)
+{
+  switch (NTC_monitor_state)
+  {
+    /* --- State 1: Detect stable temperature & power --- */
+    case TEMP_IDLE:
+      if (IGBT_TEMP_C > NTC_tracked_temp + TEMP_STABLE_THRESHOLD ||
+          IGBT_TEMP_C < NTC_tracked_temp ||
+          power_setting != NTC_tracked_power) {
+          // Reset tracking due to temp or power change
+          NTC_tracked_temp = IGBT_TEMP_C;
+          NTC_stable_start_time_s = (uint8_t)system_time_1s;
+          NTC_tracked_power = power_setting;
+      } else {
+          uint8_t elapsed = (uint8_t)(system_time_1s - NTC_stable_start_time_s);
+          if (elapsed >= TEMP_STABLE_DURATION_S) {
+              // Both temperature and power are stable → record as reference
+              NTC_stable_power = power_setting;
+              NTC_stable_temp  = IGBT_TEMP_C;
+              NTC_monitor_state = TEMP_STABLE_READY;
+          }
+      }
+      break;
+
+    /* --- State 2: Wait for power change to trigger monitoring --- */
+    case TEMP_STABLE_READY:
+      if (power_setting != NTC_stable_power) {
+          NTC_monitor_start_time_s = (uint8_t)system_time_1s;
+          NTC_monitor_state        = TEMP_MONITORING;
+      }
+      break;
+
+    /* --- State 3: Monitor temperature reaction after power change --- */
+    case TEMP_MONITORING:
+      if (IGBT_TEMP_C != NTC_stable_temp || power_setting == NTC_stable_power) {
+          // Temperature changed → normal behavior
+          // Power reverted to original → cancel monitoring
+          NTC_monitor_state = TEMP_IDLE;
+          NTC_stable_start_time_s = (uint8_t)system_time_1s;
+      } else {
+          uint8_t elapsed = (uint8_t)(system_time_1s - NTC_monitor_start_time_s);
+          if (elapsed >= TEMP_MONITOR_DURATION_S) {
+              // Temperature remained unchanged for entire monitoring period → raise fault
+              error_flags.f.IGBT_sensor_fault2 = 1;
+              NTC_monitor_state = TEMP_IDLE;
+              NTC_stable_start_time_s = (uint8_t)system_time_1s;
+          }
+      }
+      break;
+      
+  }
+  
 }
 
 
