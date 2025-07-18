@@ -22,11 +22,7 @@
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define T2SF_MARGIN     64      // 2us @ 32MHz
-#define T2SF_RELOAD     (uint16_t)(0xFFFF - (PWM_MAX_WIDTH+T2SF_MARGIN+1))
-
 void Timer2_Init() {
-  // 計算 Timer0 的初始值對應 32 MHz 系統時鐘
   T2M = 0;
   T2M |= T2_DIV_1 | T2_CLK_FHOSC;
   
@@ -41,8 +37,9 @@ void Timer2_Init() {
 
   //ET2 = 1;
 
-  // Enable Timer2
-  T2M |= mskT2EN | mskT2SF ; 
+  // Enable T2SF
+  T2M |= mskT2SF; 
+
 }
 
 

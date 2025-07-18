@@ -61,15 +61,14 @@ void PWM0_ISR(void) interrupt ISRPwm0
   
   // IGBT_C_slowdown ramp-up
   if ((system_state == PERIODIC_HEATING) &&
-      (periodic_heat_state == PERIODIC_SLOWDOWN_PHASE)) 
-  {
-    if (PW0D < SLOWDOWN_PWM_MAX_WIDTH) {
-        PW0D++;
-    } else {
-        PW0D = SLOWDOWN_PWM_MAX_WIDTH;
-    }
-    
-    goto ISR_EXIT;
+      (periodic_heat_state == PERIODIC_SLOWDOWN_PHASE)) {
+      if (PW0D < SLOWDOWN_PWM_MAX_WIDTH) {
+          PW0D++;
+      } else {
+          PW0D = SLOWDOWN_PWM_MAX_WIDTH;
+      }
+      
+      goto ISR_EXIT;
   }
 
   // In heating logic

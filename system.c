@@ -11,7 +11,6 @@
 /*_____ I N C L U D E S ____________________________________________________*/
 #include "system.h"
 #include "temperature.h"
-#include <math.h>
 #include "comparator.h"
 #include "PWM.h"
 #include "config.h"
@@ -23,14 +22,15 @@
 #define SYSTEM_TICKS_PER_1MS    8     // 125us*8 = 1ms
 #define SYSTEM_1MS_PER_SECOND   1000  // 1ms*1000 = 1s
 
-#define SHUTDOWN_DURATION_SECONDS 60 // 60秒
-#define SHUTDOWN_TEMP_THRESHOLD 50 // 50度C
+#define SHUTDOWN_DURATION_SECONDS 60  // 60 seconds
+#define SHUTDOWN_TEMP_THRESHOLD   50  // 50°C
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
-static uint16_t cntdown_timers[MAX_CNTDOWN_TIMERS]; // 計時器數組
+static uint16_t cntdown_timers[MAX_CNTDOWN_TIMERS]; // countdown timer array
 volatile bit ISR_f_125us = 0;
 bit exit_shutdown_flag = 0;
-bit f_shutdown_in_progress = 0;  // 關機進行標誌
+bit f_shutdown_in_progress = 0;     // shutdown in-progress flag
+static bit shutdown_triggered = 0;  // mark if shutdown logic is triggered
 bit f_pot_detected = 0;
 //bit f_pot_analyzed = 0;
 //uint16_t recorded_1000W_PW0D = 0; // pot_analyze not use now.
@@ -38,20 +38,21 @@ bit f_block_occurred = 0;
 bit f_power_switching = 0;
 
 uint32_t power_setting = 0;
-uint32_t target_power = 0;            // 目標功率
+uint32_t target_power = 0;
 
-volatile uint8_t system_ticks = 0;    // 系統計數 (125 μs 為單位)
-uint16_t system_time_1ms = 0;         // 系統時間（1 ms 為單位）
-uint16_t system_time_1s = 0;          // 系統時間（1 秒為單位
+volatile uint8_t system_ticks = 0;    // system tick counter (unit: 125 μs)
+uint16_t system_time_1ms = 0;         // system time (unit: 1 ms)
+uint16_t system_time_1s = 0;          // system time (unit: 1 s)
 
 uint8_t measure_per_AC_cycle = MEASUREMENTS_PER_60HZ;
 
-SystemState system_state = STANDBY;  // 系統初始狀態為待機, should not switch state in ISR, it may switch back in main loop. 
-  
+SystemState system_state = STANDBY;   // initial system state is standby, should not switch state in ISR, 
+                                      // it may switch back in main loop. 
+
   #if TUNE_MODE == 1
 //  uint16_t xdata tune_cnt = 0;
-  uint32_t xdata tune_record1 = 0;
-  uint32_t xdata tune_record2 = 0;
+//  uint32_t xdata tune_record1 = 0;
+//  uint32_t xdata tune_record2 = 0;
   #endif
 
 /*_____ M A C R O S ________________________________________________________*/
@@ -61,8 +62,6 @@ void Pot_Detection(void);
 void Pot_Detection_In_Heating(void);
 void shutdown_process(void);
 void finalize_shutdown(void);
-
-static bit shutdown_triggered = 0;           // 標記是否已觸發關機邏輯
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void SystemCLK_Init(void)
@@ -143,7 +142,7 @@ void CNTdown_Timer_Init()
  * once per call to cntdown_timer_update().
  */
 void cntdown_timer_start(uint8_t timer_id, uint16_t duration) {
-        cntdown_timers[timer_id] = duration; // 設置計時器初始值
+        cntdown_timers[timer_id] = duration; // set initial timer value
 }
 
 /**
@@ -167,44 +166,41 @@ void cntdown_timer_update() {
   uint8_t i;
     for (i = 0; i < MAX_CNTDOWN_TIMERS; i++) {
         if (cntdown_timers[i] > 0) {
-            cntdown_timers[i]--; // 遞減計時器
+            cntdown_timers[i]--; // decrement timer
         }
     }
 }
 
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Update_System_Time() {
-    static uint8_t last_1ms_ticks = 0;      // 上次更新 1ms 的 ticks 值
-    static uint16_t last_1s_time_1ms = 0;   // 上次 1 秒更新的 1 ms 記錄值
+    static uint8_t last_1ms_ticks = 0;      // last recorded tick count for 1ms
+    static uint16_t last_1s_time_1ms = 0;   // last recorded time for 1s
 
-    // 利用 system_ticks 減去已記錄值來計算 1 ms
+    // calculate 1 ms from system_ticks
     if ((system_ticks - last_1ms_ticks) >= SYSTEM_TICKS_PER_1MS) {
-        system_time_1ms++;                   // 增加 1ms 計數
-        last_1ms_ticks = system_ticks; // 更新已記錄的 ticks
-
-        // 更新所有倒數計時器
-        cntdown_timer_update(); 
+        system_time_1ms++;              // increase 1ms counter
+        last_1ms_ticks = system_ticks;  // update last tick value
+        cntdown_timer_update();         // update all countdown timers
     }
 
-    // 利用 system_time_1ms 減去已記錄值來計算 1 秒
+    // calculate 1 s from system_time_1ms
     if ((system_time_1ms - last_1s_time_1ms) >= SYSTEM_1MS_PER_SECOND) {
-        system_time_1s++;                     // 增加 1 秒計數
-        last_1s_time_1ms = system_time_1ms; // 更新已記錄的 1ms 時間
+        system_time_1s++;                   // increase 1 second counter
+        last_1s_time_1ms = system_time_1ms; // update last ms value
     }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //uint16_t target_current = 0;        //  mA  HCW*** not use now
 
-#define RATED_VOLTAGE_THRESHOLD       200     // Rated voltage threshold (V)
+#define RATED_VOLTAGE_THRESHOLD     200     // Rated voltage threshold (V)
 #define LOW_VOLTAGE_CURRENT_LIMIT   6000    // Max current when voltage is low (mA)
 #define HIGH_POWER_LEVEL            2200000 // 2200K (mW)
 #define PWM_ADJUST_QUICK_CHANGE     3       // Value to decrease PWM width when voltage changes quickly
 
 uint16_t current_RMS_mA = 0;
 uint16_t voltage_RMS_V = 0;
-uint32_t current_power = 0;           // 目前功率 mW
+uint32_t current_power = 0;                 //mW
 
 //HCW*** handle PW0D request in PWM0_ISR now. 
 //void Increase_PWM_Width(uint8_t val) {
@@ -253,24 +249,24 @@ void Power_Control(void)
         return;                  // skip further checks
     }
     
-    // 當功率大於高功率標準時處理
-    if (current_power > HIGH_POWER_LEVEL) {
-        if (error_flags.f.Voltage_quick_change) {
-          // 電壓快速變化，減少 PWM 寬度
-          PW0D_delta_req_pwr_ctrl = -1;
-          PWM_INTERRUPT_ENABLE;   // enable PWM ISR for adjustment
-          return;                 // skip further checks
-        }
-    }
+//    // When power exceeds high power threshold
+//    if (current_power > HIGH_POWER_LEVEL) {
+//        // Voltage changes rapidly, decrease PWM width
+//        PW0D_delta_req_pwr_ctrl = -1;
+//        PWM_INTERRUPT_ENABLE;   // enable PWM ISR for adjustment
+//        return;                 // skip further checks
+//    }
     
+    #if BELOWRATED_VOLTAGE_CONSTANT_CURRENT_MODE == 1
     // Limit current when voltage is below the Rated Voltage
     if (voltage_RMS_V < RATED_VOLTAGE_THRESHOLD) {
-        if(current_RMS_mA > LOW_VOLTAGE_CURRENT_LIMIT) {
-          PW0D_delta_req_pwr_ctrl = -1;
-          PWM_INTERRUPT_ENABLE;   // Force decrease PWM if current is too high
-          return;
+        if (current_RMS_mA > LOW_VOLTAGE_CURRENT_LIMIT) {
+            PW0D_delta_req_pwr_ctrl = -1;
+            PWM_INTERRUPT_ENABLE;   // Force decrease PWM if current is too high
+            return;
         }
     }
+    #endif
     
 //    // Patch for PW0D shrink to 0 by CM2SF HCW**
 //    if(PW0D < PWM_MIN_WIDTH) 
@@ -297,69 +293,71 @@ void Power_Control(void)
     
 }
 
-
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void PWM_Request_Reset(void)
 {
     PW0D_req_CMP2_isr       = FALSE;
     PW0D_delta_req_pwr_ctrl = 0;
 }
 
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define POT_CONFIRM_INTERVAL  2   // Pot confirmation countdown time (2ms)
 #define POT_CHECK_INTERVAL    500 // Pot detection interval countdown value (500ms)
 #define POT_PULSE_THRESHOLD   30  // Threshold for pot missing
-#define POT_PULSE_MIN         3   // Minimum pulses for valid pot check
+#define POT_PULSE_MIN         2   // Minimum pulses for valid pot check
 
 PotDetectionState pot_detection_state = POT_IDLE;
-volatile uint8_t pot_pulse_cnt = 0;   // 鍋具脈衝計數器
+volatile uint8_t pot_pulse_cnt = 0;   // pot pulse counter
 
 void Pot_Detection() {  
   
   if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
-    return;  // 檢鍋間隔時間未到，直接返回
+    return;   // detection interval not reached, return
   }
   
   if (pot_detection_state == POT_IDLE) {
-    ISR_f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
+    ISR_f_CM3_AC_sync = 0;      // Clear AC sync flag before waiting
     while (!ISR_f_CM3_AC_sync); // Block execution until AC low is detected
     f_block_occurred = 1;
   }
   
   switch (pot_detection_state) {
     case POT_IDLE:
-      // **開始檢鍋**
-      // 啟動鍋具確認倒數計時器
+      // Start pot detection
+      // Start pot confirmation countdown
       cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POT_CONFIRM_INTERVAL);
       
-      pot_pulse_cnt = 0;  // 清零脈衝計數器
+      pot_pulse_cnt = 0;  // reset pulse counter
       pot_detection_state = POT_CHECKING;
       
       // Patch: Protect for PWM accidentally switch mode
       PW0M &= ~mskPW0EN;    // Disable PWM
       CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
-      PW0D = POT_DETECT_PULSE_TIME;    // 設定 PW0D 數值為檢鍋用值 (6us)
-      PW0Y = PWM_MAX_WIDTH;             // 設定 PW0Y 為最大值 patch, 防止不小心反向
-      // **觸發檢鍋**
-      PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // 設定 PWM0 為脈衝模式
-      PW0M1 |= (mskPGOUT);             // 觸發檢鍋脈衝
+      PW0D = POT_DETECT_PULSE_WIDTH ;   // set PW0D value for pot detection (6us)
+      PW0Y = PWM_MAX_WIDTH;             // set PW0Y to max value as protection
+      // Trigger pot detection
+      PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // set PWM0 to pulse mode
+      PW0M1 |= (mskPGOUT);              // trigger pot detection pulse
       CLEAR_CM0_IRQ_FLAG;
       CM0_IRQ_ENABLE;
       break;
       
     case POT_CHECKING:
-      // **等待檢鍋完成**
+      // Wait for pot detection to complete
       if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
         return;
       }
-      // 鍋具確認完成，結束檢鍋邏輯
+      // Pot detection complete, end logic
       CM0_IRQ_DISABLE;
-      // 重啟檢鍋間隔計時器
+      // Restart detection interval timer
       cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POT_CHECK_INTERVAL);
         
       if (pot_pulse_cnt < POT_PULSE_MIN) {
-        error_flags.f.Coil_problem = 1;  // Coil fault detected
-        
+        #if COIL_PROBLEM_DETECT == 1
+          error_flags.f.Coil_problem = 1;  // Coil fault detected
+        #else
+          f_pot_detected = 1;
+        #endif
       } else if (pot_pulse_cnt < POT_PULSE_THRESHOLD) {
         f_pot_detected = 1;
         

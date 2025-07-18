@@ -20,7 +20,7 @@
 #define SYS_CLK_DIV64   (6<<0)
 #define SYS_CLK_DIV128  (7<<0)
 
-#define MAX_CNTDOWN_TIMERS 5 // 支援最多 5 個倒數計時器
+#define MAX_CNTDOWN_TIMERS 5 // Supports up to 5 countdown timers
 
 typedef union {
     struct {
@@ -33,9 +33,9 @@ typedef union {
       uint8_t Over_voltage : 1;
       uint8_t Low_voltage : 1;
       uint8_t Over_current : 1;
-      uint8_t Voltage_quick_change : 1;
-      uint8_t Current_quick_large : 1;
       uint8_t Coil_problem : 1;
+      //uint8_t Current_quick_large : 1;
+      //uint8_t Voltage_quick_change : 1;
     } f;
     uint16_t all_flags;   // For quickly checking all flags
 } ErrorFlags;
@@ -46,9 +46,6 @@ typedef union {
     } f;
     uint8_t all_flags;
 } WarningFlags;
-
-
-
 
 
 typedef enum {
@@ -63,6 +60,7 @@ typedef enum {
   TASK_SHUTDOWN,                // 關機任務
   TASK_ERROR_PROCESS            // 錯誤處理任務
 } TaskType;
+
 
 typedef enum {
     STANDBY = 0,          // 待機狀態
@@ -79,6 +77,7 @@ typedef enum {
     POT_CHECKING,
     POT_ANALYZING
 } PotDetectionState;
+
 
 typedef enum {
     PWR_UP,

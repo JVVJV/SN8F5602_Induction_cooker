@@ -1,11 +1,12 @@
 /******************** (C) COPYRIGHT 2024 SONiX *******************************
 * COMPANY:	SONiX
-* DATE:		  2025/01
+* DATE:		  2025/07
 * AUTHOR:		HCW
 * IC:			  SR56F27
 *____________________________________________________________________________
 * REVISION		Date				User		Description
 * 0.1         2025/02 
+* 0.6         2025/07 
 *____________________________________________________________________________
 *****************************************************************************/
 
@@ -104,7 +105,7 @@ void main (void)
       Power_read();
       Zero_Crossing_Task();
       Frequency_jitter();
-       
+      
       // Subtask loop
       switch (current_task) {
         case TASK_HEAT_CONTROL:
@@ -153,7 +154,6 @@ void main (void)
     
     // Burst mode
     Periodic_Power_Control();
-    
   } //while end
  
 }

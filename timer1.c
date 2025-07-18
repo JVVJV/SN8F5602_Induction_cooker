@@ -23,7 +23,7 @@
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define T1SF_RELOAD     (uint16_t)(0xFFFF-(100*32)+1) // 100us @32MHz
+#define T1SF_RELOAD     (uint16_t)(0xFFFF-(1000*32)+1) // 1000us @32MHz
 
 void Timer1_Init() {
   T1M = 0;
@@ -60,4 +60,8 @@ void Timer1_ISR() interrupt ISRTimer1
 {
   // T1SF indicates unexpected halt
   ISR_f_Unexpected_halt = 1;
+  
+  // Timer1 disable
+  T1M &= ~mskT1EN;
+  
 }
