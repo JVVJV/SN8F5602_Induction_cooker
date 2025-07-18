@@ -16,7 +16,8 @@
 #include "ADC.h"
 #include "buzzer.h"
 #include "config.h"
-#include <math.h>
+#include "timer1.h"
+#include "timer2.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 
@@ -233,8 +234,8 @@ void Measure_Base_Current(void) {
 #define VOLTAGE_UPPER_LIMIT          255     // Over-voltage threshold (V)
 #define VOLTAGE_RECOVER_HIGH         245     // Over-voltage recovery (V)
 
-#define VOLTAGE_LOWER_LIMIT          170     // Under-voltage threshold (V)
-#define VOLTAGE_RECOVER_LOW          180     // Under-voltage recovery (V)
+#define VOLTAGE_LOWER_LIMIT          110     // Under-voltage threshold (V)
+#define VOLTAGE_RECOVER_LOW          120     // Under-voltage recovery (V)
 
 #define CURRENT_UPPER_LIMIT_mA      9600    // Over-current threshold: 9.6A = 9600 mA
 #define CURRENT_RECOVER_LIMIT_mA    9400    // Over-current recovery: 9.4A
@@ -282,29 +283,29 @@ void Quick_Change_Detect() {
 		
     // === Power switching status check ===
     if (f_power_switching) {
-      if (cntdown_timer_expired(CNTDOWN_TIMER_POWER_SWITCHING)) {
-        f_power_switching = 0; // Clear the power switching flag
-      }
+        if  (cntdown_timer_expired(CNTDOWN_TIMER_POWER_SWITCHING)) {
+            f_power_switching = 0; // Clear the power switching flag
+        }
     } else {
-      // Only check for rapid voltage/current increases when not in power switching mode
-      
-      // Check if the voltage increases rapidly	
-      if (voltage_RMS_V > last_voltage) {
-        unsigned int diff = voltage_RMS_V - last_voltage;
-        if (diff > VOLTAGE_CHANGE_THRESHOLD) {
-            PW0D_req_quick_surge = 1;
-            PWM_INTERRUPT_ENABLE;
+        // Only check for rapid voltage/current increases when not in power switching mode
+        
+        // Check if the voltage increases rapidly	
+        if (voltage_RMS_V > last_voltage) {
+            unsigned int diff = voltage_RMS_V - last_voltage;
+            if (diff > VOLTAGE_CHANGE_THRESHOLD) {
+                PW0D_req_quick_surge = 1;
+                PWM_INTERRUPT_ENABLE;
+            }
         }
-      }
-      
-      // Check if the current increases rapidly
-      if (current_RMS_mA > last_current) {
-        unsigned int diff = current_RMS_mA - last_current;
-        if (diff > CURRENT_CHANGE_THRESHOLD) {
-            PW0D_req_quick_surge = 1;
-            PWM_INTERRUPT_ENABLE;
+        
+        // Check if the current increases rapidly
+        if (current_RMS_mA > last_current) {
+            unsigned int diff = current_RMS_mA - last_current;
+            if (diff > CURRENT_CHANGE_THRESHOLD) {
+                PW0D_req_quick_surge = 1;
+                PWM_INTERRUPT_ENABLE;
+            }
         }
-      }
   }
   // Update previous measurement values  //move to other place?? HCW***
   last_voltage = voltage_RMS_V;
@@ -324,6 +325,12 @@ void stop_heating(void)
   
   PWM_Request_Reset();
   
+  #if UNEXPECTED_HALT_DETECT == 1
+    Timer1_Disable();         // T1SF Disable
+  #endif
+  
+  T2M &= ~mskT2EN;            // T2SF Disable
+  
   power_setting = 0;
   f_pot_detected = 0;       // Reset pot detection flag
   f_heating_initialized = 0;
@@ -335,6 +342,13 @@ void pause_heating(void)
   PW0M &= ~(mskPW0EN|mskPW0PO|mskPWM0OUT); // Disable PWM / pulse / normal PWM function
   PWM_INTERRUPT_DISABLE;
   CM0M &= ~mskCM0SF;            // Patch: Disable CM0 pulse trigger, if enable pulse trigger PGOUT can't trigger.
+  
+  #if UNEXPECTED_HALT_DETECT == 1
+    Timer1_Disable();         // T1SF Disable
+  #endif
+  
+  T2M &= ~mskT2EN;            // T2SF Disable
+  
   f_heating_initialized = 0;    // Clear heating initialized flag
 }
 
@@ -514,9 +528,9 @@ void Periodic_Power_Control(void) {
           PW0D_backup = PW0D;
           PW0D_lock = 0;
           
+          periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
           IGBT_C_slowdown();
           phase_start_tick = system_ticks;
-          periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
         }
         
       #elif BURST_MODE == BURST_MODE_DYNAMIC
@@ -529,9 +543,9 @@ void Periodic_Power_Control(void) {
           PW0D_backup = PW0D;
           PW0D_lock = 0;
           
+          periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
           IGBT_C_slowdown();
           phase_start_tick = system_ticks;
-          periodic_heat_state = PERIODIC_SLOWDOWN_PHASE;
           
           // pattern_index control
           pattern_repeat_count++;
@@ -601,7 +615,7 @@ void Periodic_Power_Control(void) {
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
-{ 
+{
   // Wait for AC low if required
   if (sync_ac_low) {
     ISR_f_CM3_AC_sync = 0; // Clear AC sync flag before waiting
@@ -622,7 +636,7 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
     case PULSE_WIDTH_PERIODIC_START:  // PERIODIC mode reference value set to 1000W HCW**
         PW0D = 280;
         break;
-    case PULSE_WIDTH_NO_CHANGE:  // **Keep PW0D unchanged**
+    case PULSE_WIDTH_NO_CHANGE:  // Keep PW0D unchanged
     default:
         break;
   }
@@ -630,16 +644,29 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   // Enable PWM
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;
   
+  // T2SF enable
+  // Patch: If T2 OV occurs exactly at the pulse start, it triggers T2SF. 
+  // T2EN is placed here to ensure T2 starts counting first and is reloaded by the subsequent PGOUT.
+  T2CH = (T2SF_RELOAD>>8);
+  T2CL = T2SF_RELOAD;
+  T2M |= mskT2EN;                 
+  
   // FW starts PWM for the first charge
   PW0M1 |= mskPGOUT;
   while((PW0M1&mskPGOUT) != 0); // Wait pulse end
   
-  PW0M &= ~mskPW0EN;            // Disable PWM
+  // Disable PWM
+  PW0M &= ~mskPW0EN;            
   CM0M |= mskCM0SF;             // Enable CM0 pulse trigger
-  PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  // Enable PWM
+  // Enable PWM
+  PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;  
+  
+  #if UNEXPECTED_HALT_DETECT == 1
+    Timer1_Enable();            // T1SF enable
+  #endif
   
   reset_power_read_data();
-  f_heating_initialized = 1;       // Mark heating as initialized
+  f_heating_initialized = 1;    // Mark heating as initialized
   
 }
 
@@ -648,12 +675,19 @@ void IGBT_C_slowdown(void) {
     // Patch: Protect for PWM accidentally switch mode
     PW0M &= ~mskPW0EN;    // Disable PWM
     CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
-  
+    
     PW0Y = SLOWDOWN_PWM_PERIOD;       // Set PWM period
     PW0D = SLOWDOWN_PWM_START_WIDTH;  // Set PWM pulse width
     
     PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
+  
+    // T2SF Enable, Patch: If T2 OV occurs exactly at the pulse start, it triggers T2SF. 
+    // T2EN is placed here to ensure T2 starts counting first and is reloaded by the 
+    // subsequent PWM enable.
+    T2CH = (T2SF_RELOAD>>8);
+    T2CL = T2SF_RELOAD;
+    T2M |= mskT2EN;
   
     // Enable PWM
     PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPWM0OUT;

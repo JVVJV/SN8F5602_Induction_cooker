@@ -1,6 +1,6 @@
 /******************** (C) COPYRIGHT 2024 SONiX *******************************
 * COMPANY:	SONiX
-* DATE:		  2025/01
+* DATE:		  2025/07
 * AUTHOR:		HCW
 * IC:			  SR56F27
 *____________________________________________________________________________
@@ -9,9 +9,10 @@
 *****************************************************************************/
 
 /*_____ I N C L U D E S ____________________________________________________*/
-#include "timer2.h"
+#include "timer1.h"
 #include "system.h"
 #include "config.h"
+
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
@@ -22,29 +23,45 @@
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void Timer2_Init() {
-  T2M = 0;
-  T2M |= T2_DIV_1 | T2_CLK_FHOSC;
+#define T1SF_RELOAD     (uint16_t)(0xFFFF-(1000*32)+1) // 1000us @32MHz
+
+void Timer1_Init() {
+  T1M = 0;
+  T1M |= T1_DIV_1 | T1_CLK_FHOSC | mskT1SF;
   
-  T2RH = (T2SF_RELOAD>>8);
-  T2RL = T2SF_RELOAD;
+  T1RH = (T1SF_RELOAD>>8);
+  T1RL = T1SF_RELOAD;
   
-  T2CH = (T2SF_RELOAD>>8);
-  T2CL = T2SF_RELOAD;
+  T1CH = (T1SF_RELOAD>>8);
+  T1CL = T1SF_RELOAD;
 	
-  // Clear TF2
-  IRCON2 &= ~mskTF2;
+  // Clear TF1
+  TCON &= ~mskTF1;
 
-  //ET2 = 1;
+  ET1 = 1;
+}
 
-  // Enable T2SF
-  T2M |= mskT2SF; 
+void Timer1_Enable(void) {
+  TCON &= ~mskTF1;    // Clear TF1
+  T1M |= mskT1EN;
+  
+}
 
+void Timer1_Disable(void) {
+  T1CH = (T1SF_RELOAD>>8);
+  T1CL = T1SF_RELOAD;
+  T1M &= ~mskT1EN;
+  
 }
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void Timer2_ISR() interrupt ISRTimer2
+void Timer1_ISR() interrupt ISRTimer1
 {
-    
+  // T1SF indicates unexpected halt
+  ISR_f_Unexpected_halt = 1;
+  
+  // Timer1 disable
+  T1M &= ~mskT1EN;
+  
 }
