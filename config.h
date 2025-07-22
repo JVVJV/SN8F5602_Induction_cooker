@@ -13,6 +13,8 @@
 // ----------------------------------------------------------------------------------------
 #define COIL_PROBLEM_DETECT     1
 #define UNEXPECTED_HALT_DETECT  1
+#define PWM_PULSE_WIDTH_PROTECT 1
+#define QUICK_SURGE_PROTECT     1
 #define BELOWRATED_VOLTAGE_CONSTANT_CURRENT_MODE  1
 
 // ----------------------------------------------------------------------------------------
@@ -54,9 +56,9 @@
 
 #define PWM_INIT_WIDTH            224       // PWM init_heating 224cnt @32MHz = 7us
 
-#define POT_DETECT_PULSE_WIDTH    192       // 設定 PW0D 數值為檢鍋用值 (6us)
+#define POT_DETECT_PULSE_WIDTH    192       // PW0D value for pot detection (6us)
 
-#define PWM_MIN_WIDTH             208       // PWM 最小寬度   208cnt @32MHz = 6.5us
+#define PWM_MIN_WIDTH             208       // PWM min width 208cnt @32MHz = 6.5us
                                             // This value should not be too small, as a smaller value 
                                             // may increase the proportion of hard-switching operation, 
                                             // leading to IGBT overheating.

@@ -35,7 +35,10 @@ void Timer2_Init() {
   // Clear TF2
   IRCON2 &= ~mskTF2;
 
-  //ET2 = 1;
+  // Patch: In the T2_ISR, it is necessary to clear T2CH/L to 0x0000 
+  // to ensure that the next PWM pulse start does not occur simultaneously 
+  // with T2OV and trigger T2SF.
+  ET2 = 1;  
 
   // Enable T2SF
   T2M |= mskT2SF; 
@@ -46,5 +49,7 @@ void Timer2_Init() {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Timer2_ISR() interrupt ISRTimer2
 {
-    
+  // T2 Patch
+  T2CH = 0x00;
+  T2CL = 0x00;
 }

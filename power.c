@@ -209,7 +209,7 @@ uint16_t current_lookup_interpolation(uint16_t adc_val)
 #define DEFAULT_BASE_CURRENT_ADC   316    // Default reference current ADC value
 #define BASE_CURRENT_TOLERANCE     8      // Allowed tolerance percentage (8%)
 
-// 在編譯期間計算允許的上下限
+// Compute allowed upper and lower limits during compilation
 #define BASE_CURRENT_LOWER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 - BASE_CURRENT_TOLERANCE)) / 100)
 #define BASE_CURRENT_UPPER_LIMIT  (((uint16_t)DEFAULT_BASE_CURRENT_ADC * (100 + BASE_CURRENT_TOLERANCE)) / 100)
 
@@ -218,10 +218,10 @@ uint16_t current_base = 0;
 void Measure_Base_Current(void) {
   uint16_t measured_value;
 
-  // 量測 ADC 基準電流值
+  // Measure the ADC reference current value
   ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &measured_value);
   
-  // 檢查是否超出允許範圍
+  // Check whether the value is within the allowed range
   if (measured_value < BASE_CURRENT_LOWER_LIMIT || measured_value > BASE_CURRENT_UPPER_LIMIT) {
       current_base = DEFAULT_BASE_CURRENT_ADC;  // Use default if out of range
   } else {
@@ -230,7 +230,7 @@ void Measure_Base_Current(void) {
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// 定義電壓和電流快速變化及上下限
+// Define rapid change thresholds and voltage/current limits
 #define VOLTAGE_UPPER_LIMIT          255     // Over-voltage threshold (V)
 #define VOLTAGE_RECOVER_HIGH         245     // Over-voltage recovery (V)
 
@@ -289,24 +289,27 @@ void Quick_Change_Detect() {
     } else {
         // Only check for rapid voltage/current increases when not in power switching mode
         
-        // Check if the voltage increases rapidly	
-        if (voltage_RMS_V > last_voltage) {
-            unsigned int diff = voltage_RMS_V - last_voltage;
-            if (diff > VOLTAGE_CHANGE_THRESHOLD) {
-                PW0D_req_quick_surge = 1;
-                PWM_INTERRUPT_ENABLE;
-            }
-        }
-        
-        // Check if the current increases rapidly
-        if (current_RMS_mA > last_current) {
-            unsigned int diff = current_RMS_mA - last_current;
-            if (diff > CURRENT_CHANGE_THRESHOLD) {
-                PW0D_req_quick_surge = 1;
-                PWM_INTERRUPT_ENABLE;
-            }
-        }
+        #if QUICK_SURGE_PROTECT == 1 
+          // Check if the voltage increases rapidly	
+          if (voltage_RMS_V > last_voltage) {
+              unsigned int diff = voltage_RMS_V - last_voltage;
+              if (diff > VOLTAGE_CHANGE_THRESHOLD) {
+                  PW0D_req_quick_surge = 1;
+                  PWM_INTERRUPT_ENABLE;
+              }
+          }
+          
+          // Check if the current increases rapidly
+          if (current_RMS_mA > last_current) {
+              unsigned int diff = current_RMS_mA - last_current;
+              if (diff > CURRENT_CHANGE_THRESHOLD) {
+                  PW0D_req_quick_surge = 1;
+                  PWM_INTERRUPT_ENABLE;
+              }
+          }
+        #endif
   }
+  
   // Update previous measurement values  //move to other place?? HCW***
   last_voltage = voltage_RMS_V;
   last_current = current_RMS_mA;
@@ -329,7 +332,9 @@ void stop_heating(void)
     Timer1_Disable();         // T1SF Disable
   #endif
   
-  T2M &= ~mskT2EN;            // T2SF Disable
+  #if PWM_PULSE_WIDTH_PROTECT == 1
+    T2M &= ~mskT2EN;          // T2SF Disable
+  #endif
   
   power_setting = 0;
   f_pot_detected = 0;       // Reset pot detection flag
@@ -347,7 +352,9 @@ void pause_heating(void)
     Timer1_Disable();         // T1SF Disable
   #endif
   
-  T2M &= ~mskT2EN;            // T2SF Disable
+  #if PWM_PULSE_WIDTH_PROTECT == 1
+    T2M &= ~mskT2EN;          // T2SF Disable
+  #endif
   
   f_heating_initialized = 0;    // Clear heating initialized flag
 }
@@ -381,7 +388,7 @@ void Heat_Control(void)
       return;
   }
 
-  // 檢查鍋具狀態
+  // Check the pot status
   if (f_pot_detected == 0) {
     Fan_Enable();     // drive fan at normal or full speed
     Pot_Detection();  // Execute pot detection logic
@@ -389,8 +396,8 @@ void Heat_Control(void)
   }
   
 	if (target_power != power_setting) {
-    f_power_switching = 1;  // 設定功率切換中，暫停保護機制
-    cntdown_timer_start(CNTDOWN_TIMER_POWER_SWITCHING, 2000); // 啟動 2 秒倒數
+    f_power_switching = 1;  //  Indicate power switching and pause protection
+    cntdown_timer_start(CNTDOWN_TIMER_POWER_SWITCHING, 2000); // Start 2s countdown
   }
   
   // Normal heating mode
@@ -644,12 +651,14 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
   // Enable PWM
   PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO;
   
-  // T2SF enable
-  // Patch: If T2 OV occurs exactly at the pulse start, it triggers T2SF. 
-  // T2EN is placed here to ensure T2 starts counting first and is reloaded by the subsequent PGOUT.
-  T2CH = (T2SF_RELOAD>>8);
-  T2CL = T2SF_RELOAD;
-  T2M |= mskT2EN;                 
+  #if PWM_PULSE_WIDTH_PROTECT == 1
+    // T2SF enable
+    // Patch: If T2 OV occurs exactly at the pulse start, it triggers T2SF. 
+    // T2EN is placed here to ensure T2 starts counting first and is reloaded by the subsequent PGOUT.
+    T2CH = (T2SF_RELOAD>>8);
+    T2CL = T2SF_RELOAD;
+    T2M |= mskT2EN;               
+  #endif  
   
   // FW starts PWM for the first charge
   PW0M1 |= mskPGOUT;
@@ -682,12 +691,14 @@ void IGBT_C_slowdown(void) {
     PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
   
-    // T2SF Enable, Patch: If T2 OV occurs exactly at the pulse start, it triggers T2SF. 
-    // T2EN is placed here to ensure T2 starts counting first and is reloaded by the 
-    // subsequent PWM enable.
-    T2CH = (T2SF_RELOAD>>8);
-    T2CL = T2SF_RELOAD;
-    T2M |= mskT2EN;
+    #if PWM_PULSE_WIDTH_PROTECT == 1
+      // T2SF Enable, Patch: If T2 OV occurs exactly at the pulse start, it triggers T2SF. 
+      // T2EN is placed here to ensure T2 starts counting first and is reloaded by the 
+      // subsequent PWM enable.
+      T2CH = (T2SF_RELOAD>>8);
+      T2CL = T2SF_RELOAD;
+      T2M |= mskT2EN;
+    #endif
   
     // Enable PWM
     PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPWM0OUT;

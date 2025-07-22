@@ -1,5 +1,5 @@
-#ifndef __TIMER_H__
-#define __TIMER_H__
+#ifndef __TIMER0_H__
+#define __TIMER0_H__
 
 /*_____ I N C L U D E S ____________________________________________________*/
 #include <SN8F5602.h>
@@ -34,4 +34,4 @@
 void Timer0_Init(void);
 
 
-#endif  // __TIMER_H__
+#endif  // __TIMER0_H__

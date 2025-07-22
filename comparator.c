@@ -230,7 +230,7 @@ void comparator2_ISR(void) interrupt ISRCmp2
    3. `ISR_f_CM3_AC_sync` is only allowed to be triggered again after `AC_SYNC_DEBOUNCE_TICKS`, preventing jitter from affecting the timing accuracy.
 */
 
-#define AC_SYNC_DEBOUNCE_TICKS 32  // **AC 週期同步去抖動時間 32*125us (4ms)**
+#define AC_SYNC_DEBOUNCE_TICKS 32  // AC cycle sync debounce time  32*125us (4ms)
 
 volatile bit ISR_f_CM3_AC_sync = 0;
 volatile bit ISR_f_CM3_AC_Zero_sync = 0;

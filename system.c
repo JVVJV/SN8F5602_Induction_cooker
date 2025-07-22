@@ -28,12 +28,15 @@
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 static uint16_t cntdown_timers[MAX_CNTDOWN_TIMERS]; // countdown timer array
 volatile bit ISR_f_125us = 0;
-bit exit_shutdown_flag = 0;
-bit f_shutdown_in_progress = 0;     // shutdown in-progress flag
-static bit shutdown_triggered = 0;  // mark if shutdown logic is triggered
+
+//bit exit_shutdown_flag = 0;
+//bit f_shutdown_in_progress = 0;     // shutdown in-progress flag
+//static bit shutdown_triggered = 0;  // mark if shutdown logic is triggered
+
 bit f_pot_detected = 0;
 //bit f_pot_analyzed = 0;
 //uint16_t recorded_1000W_PW0D = 0; // pot_analyze not use now.
+
 bit f_block_occurred = 0;
 bit f_power_switching = 0;
 
@@ -78,42 +81,42 @@ void SystemCLK_Init(void)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Shutdown_Task(void)
-{    
-//  static uint32_t shutdown_start_time = 0;        // 關機開始時間（以秒為單位）
+{   
+//  static uint32_t shutdown_start_time = 0;        // Shutdown start time (seconds)
 //  uint8_t elapsed_time;
 
-//  // 檢查 system_state 是否為 SHUTTING_DOWN
+//  // Check whether system_state is SHUTTING_DOWN
 //  if (system_state != SHUTTING_DOWN) {
-//      return;  // 如果不在 SHUTTING_DOWN 狀態，直接退出
+//      return;  // Exit if not in SHUTTING_DOWN state
 //  }
 
-//  // 初始化關機邏輯
+//  // Initialize shutdown logic
 //  if (!shutdown_triggered) {
-//      shutdown_start_time = system_time_1s;       // 記錄關機開始時間
-//      shutdown_process();                        // 執行一次性關機邏輯
+//      shutdown_start_time = system_time_1s;       // Record shutdown start time
+//      shutdown_process();                        // Execute one-time shutdown logic
 //      shutdown_triggered = 1;
 //  }
 
-//  // 檢查是否允許跳脫關機 !!
+//  // Check if shutdown escape is allowed
 //  if (exit_shutdown_flag) {
-//      exit_shutdown_flag = 0;  // 清除 CMD 標誌      
-//      shutdown_triggered = 0;       // 重置關機邏輯
-//      shutdown_start_time = 0;      // 重置開始時間
-//      f_shutdown_in_progress = 0;    // 結束關機
-//      return;                      // 跳脫關機行為
+//      exit_shutdown_flag = 0;  // Clear CMD flag
+//      shutdown_triggered = 0;       // Reset shutdown logic
+//      shutdown_start_time = 0;      // Reset start time
+//      f_shutdown_in_progress = 0;    // End shutdown
+//      return;                      // Exit the shutdown process
 //  }
 
-//  // 計算已過時間
+//  // Calculate elapsed time
 //  elapsed_time = system_time_1s - shutdown_start_time;
 
-//  // 判斷是否完成關機條件
+//  // Determine whether shutdown conditions are met
 //  if (elapsed_time >= SHUTDOWN_DURATION_SECONDS &&
 //      IGBT_TEMP_C < SHUTDOWN_TEMP_THRESHOLD &&
 //      TOP_TEMP_C < SHUTDOWN_TEMP_THRESHOLD) {
-//      finalize_shutdown();             // 完成關機操作
-//      system_state = STANDBY;          // 切換系統狀態為 STANDBY
-//      shutdown_triggered = 0;         // 重置關機邏輯
-//      f_shutdown_in_progress = 0;        // 清除關機標誌
+//      finalize_shutdown();             // Complete shutdown operations
+//      system_state = STANDBY;          // Change system state to STANDBY
+//      shutdown_triggered = 0;         // Reset shutdown logic
+//      f_shutdown_in_progress = 0;        // Clear shutdown flag
 //  }
 }
 
@@ -129,7 +132,7 @@ void CNTdown_Timer_Init()
   uint8_t id;
     for (id = 0; id < MAX_CNTDOWN_TIMERS; id++) 
     {
-        cntdown_timers[id] = 0; // 初始化所有計時器為 0
+        cntdown_timers[id] = 0; // Initialize all timers to 0
     }
 }
 
@@ -204,18 +207,18 @@ uint32_t current_power = 0;                 //mW
 
 //HCW*** handle PW0D request in PWM0_ISR now. 
 //void Increase_PWM_Width(uint8_t val) {
-//  if ((PW0D + val) <= PWM_MAX_WIDTH) { // 確保不超過最大值
+//  if ((PW0D + val) <= PWM_MAX_WIDTH) { // Ensure it does not exceed the maximum value
 //      PW0D += val;
 //  } else {
-//      PW0D = PWM_MAX_WIDTH; // 避免超過最大寬度
+//      PW0D = PWM_MAX_WIDTH; // Prevent exceeding the maximum width
 //  }
 //}
 
 //void Decrease_PWM_Width(uint8_t val) {
-//  if ((PW0D >= (val + PWM_MIN_WIDTH))) { // 確保不小於最小值
+//  if ((PW0D >= (val + PWM_MIN_WIDTH))) { // Ensure it is not less than the minimum
 //      PW0D -= val;
 //  } else {
-//      PW0D = PWM_MIN_WIDTH; // 避免低於最小寬度
+//      PW0D = PWM_MIN_WIDTH; // Prevent going below the minimum width
 //  }
 //}
 
@@ -223,7 +226,6 @@ uint32_t current_power = 0;                 //mW
 volatile char PW0D_delta_req_pwr_ctrl = 0;
 volatile bit PW0D_lock = 0;
 
-// 功率控制函式
 void Power_Control(void)
 {
     // check 4ms countdown timer
@@ -376,7 +378,7 @@ void Pot_Detection() {
     case POT_ANALYZING:
 //      Pot_Analyze();
 
-//      // **若 Pot_Analyze完成
+//      // If Pot_Analyze is completed
 //      if (f_pot_analyzed == 1) {
 //        pot_detection_state = POT_IDLE;
 //      }
@@ -423,7 +425,7 @@ void Pot_Detection_In_Heating(void)
 // HCW*** Cancel the pot analysis process.
 
 //#define POT_ANALYZE_POWER         1000000 // 1000 000mW
-//#define DEFAULT_1000W_PW0D_VAL    320     // PWM 寬度 320cnt @32MHz = 10us
+//#define DEFAULT_1000W_PW0D_VAL    320     // PWM width  320cnt @32MHz = 10us
 //#define POWER_STABILITY_THRESHOLD 50000   // 50 000mW  
 //#define POWER_STABLE_TIME         1000    // 1000ms
 //#define POWER_SAMPLE_INTERVAL     100     // 100ms  
@@ -506,12 +508,12 @@ void Pot_Detection_In_Heating(void)
 //}
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define AC_PERIOD_COUNT 4   // 取 4 次週期平均
-#define DEBOUNCE_TICKS  2   // 軟體 debounce 時間 (2 * 125us = 250us)
-#define PRE_CLEAR_DEBOUNCE_COUNT    3  // 清除中斷前需要 3 次連續確認 HIGH
-#define PRE_CLEAR_DEBOUNCE_INTERVAL 2  // 每 1 個 `system_ticks` 確認一次 (250us)
+#define AC_PERIOD_COUNT 4   // Average over 4 periods
+#define DEBOUNCE_TICKS  2   // Software debounce time (2 * 125us = 250us)
+#define PRE_CLEAR_DEBOUNCE_COUNT    3  // Require 3 consecutive HIGHs before clearing interrupt
+#define PRE_CLEAR_DEBOUNCE_INTERVAL 2  // Check once per system_tick (250us)
 
-uint8_t idata ac_low_periods[AC_PERIOD_COUNT] = {0};  // 記錄最近 4 次 AC 週期時間
+uint8_t idata ac_low_periods[AC_PERIOD_COUNT] = {0};  //  Record the latest four AC periods
 
 uint8_t ac_half_low_ticks_avg;
 
@@ -523,33 +525,33 @@ void Measure_AC_Low_Time(void) {
 //    // Wait ISR_f_CM3_AC_sync         // HCW*** It’s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM3_ISR, 
 //    while (ISR_f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC’s rising edge.
   
-    // 等待 AC 訊號穩定，收集 4 次數據
+    // Wait for the AC signal to stabilize and collect four measurements
     for (i = 0; i < AC_PERIOD_COUNT; i++) {
      
       ISR_f_CM3_AC_sync = 0;  // clear ISR_f_CM3_AC_sync
 
-      // **等待中斷發生**
+      // Wait for the interrupt to occur
       while (ISR_f_CM3_AC_sync == 0);
       
-      // **開始計時**
+      // Start timing
       start_ticks = system_ticks;
 
-      // 軟體 debounce：等待至少 `DEBOUNCE_TICKS` 再開始偵測**
+      // Software debounce: wait at least DEBOUNCE_TICKS before detecting
       while ((system_ticks - start_ticks) < DEBOUNCE_TICKS);
       
-      // **等待 CM3 輸出轉為 LOW**
+      // Wait for CM3 output to become LOW
       while (CMOUT & mskCM3OUT);
       
-      // **記錄時間**
+      // Record the time
       ac_low_periods[i]  = system_ticks - start_ticks;
       WDTR = 0x5A; // Clear watchdog
     }
 
-    // 計算 4 次週期的平均值
+    // Calculate the average of four periods
     for (i = 0; i < AC_PERIOD_COUNT; i++) {
         sum += ac_low_periods[i];
     }
-    ac_half_low_ticks_avg = sum / (AC_PERIOD_COUNT*2);  // 平均值 = sum / (AC_PERIOD_COUNT*2)
+    ac_half_low_ticks_avg = sum / (AC_PERIOD_COUNT*2);  // Average = sum / (AC_PERIOD_COUNT*2)
     
     if ((ac_half_low_ticks_avg>16) || (ac_half_low_ticks_avg<4))
     {ac_half_low_ticks_avg = 6;}
