@@ -21,11 +21,11 @@
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 
-
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 volatile bit f_heating_initialized = 0; // Indicates whether heating has been initialized
 volatile bit PW0D_req_quick_surge = 0;
 bit f_power_updated = 0;
+bit f_power_measure_ready = 0;
 
 uint8_t level = 0;
 uint16_t voltage_adc_new = 0;  // Store the measured voltage value (adc_code)
@@ -37,6 +37,19 @@ static uint32_t current_adc_sum = 0;
 static uint32_t voltage_adc_sum = 0;
 static uint16_t last_voltage = 0;
 static uint16_t last_current = 0;
+
+const uint32_t code power_table[10] = {
+  0,        // 0 W
+  1000000,  // 200 W
+  1000000,  // 500 W
+  1000000,  // 800 W
+  1000000,  // 1000 W
+  1300000,  // 1300 W
+  1600000,  // 1600 W
+  1800000,  // 1800 W
+  2000000,  // 2000 W
+  2000000   // 2200 W
+};
 
 /*_____ M A C R O S ________________________________________________________*/
 
@@ -54,20 +67,12 @@ uint16_t current_lookup_interpolation(uint16_t adc_val);
 void Power_read(void)
 {
   static uint16_t current_adc_avg = 0;
-  static bit last_power_measure_valid = 0;   // Track previous state of f_power_measure_valid
+//  static bit last_power_measure_valid = 0;   // Track previous state of f_power_measure_valid
  
   // Measure the system current & voltage
   ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &current_adc_new);
   ADC_measure_4_avg(VOLTAGE_ADC_CHANNEL, &voltage_adc_new);
 
-  // Handle PERIODIC_HEATING mode separately
-  if (system_state == PERIODIC_HEATING) {
-    if (last_power_measure_valid != f_power_measure_valid) {
-      reset_power_read_data();
-    }
-    last_power_measure_valid = f_power_measure_valid;  // Update state tracking
-  }
-  
   // Accumulate Data
   current_adc_sum += current_adc_new;
   voltage_adc_sum += voltage_adc_new;
@@ -102,18 +107,17 @@ void Power_read(void)
       current_adc_avg = 0;
     }
     
-    // mA (->RMS)
-    current_RMS_mA = current_lookup_interpolation(current_adc_avg);
-    //
     if (f_power_measure_valid) {
+      // Caculate RMS_current
+      current_RMS_mA = current_lookup_interpolation(current_adc_avg);
+      
       // Caculate power
       current_power = (uint32_t)voltage_RMS_V * current_RMS_mA;
       f_power_updated = 1;
+      f_power_measure_ready = 1;
     }
     
-    pwr_read_cnt = 0;
-    current_adc_sum = 0;
-    voltage_adc_sum = 0;
+    reset_power_read_data();
   }
 }
 
@@ -142,7 +146,6 @@ void measure_power_signals(void)
  */
 void reset_power_read_data(void)
 {
-  f_power_updated = 0;
   pwr_read_cnt = 0;
   current_adc_sum = 0;
   voltage_adc_sum = 0;
@@ -286,7 +289,9 @@ void Quick_Change_Detect() {
         if  (cntdown_timer_expired(CNTDOWN_TIMER_POWER_SWITCHING)) {
             f_power_switching = 0; // Clear the power switching flag
         }
-    } else {
+    } 
+    else if(f_power_measure_valid == 1) 
+    {
         // Only check for rapid voltage/current increases when not in power switching mode
         
         #if QUICK_SURGE_PROTECT == 1 
@@ -310,7 +315,7 @@ void Quick_Change_Detect() {
         #endif
   }
   
-  // Update previous measurement values  //move to other place?? HCW***
+  // Update previous measurement values
   last_voltage = voltage_RMS_V;
   last_current = current_RMS_mA;
 }
@@ -336,9 +341,11 @@ void stop_heating(void)
     T2M &= ~mskT2EN;          // T2SF Disable
   #endif
   
-  power_setting = 0;
+  power_level = 0;
   f_pot_detected = 0;       // Reset pot detection flag
   f_heating_initialized = 0;
+  f_power_measure_valid = 0;
+  f_power_updated = 0;
 }
 
 void pause_heating(void)
@@ -357,6 +364,8 @@ void pause_heating(void)
   #endif
   
   f_heating_initialized = 0;    // Clear heating initialized flag
+  f_power_measure_valid = 0;
+  f_power_updated = 0;
 }
 
 void shutdown_process(void)
@@ -367,14 +376,15 @@ void shutdown_process(void)
 
 void finalize_shutdown(void)
 {
-  _nop_(); //HCW**
+  _nop_();
 
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void Heat_Control(void)
 {
-  static uint8_t idata prev_level = 0xFF;  // For PERIODIC_HEATING, use invalid default to ensure first-time reset
+  static uint8_t last_power_level = 0;      // Tracks previous power_level for switching detection
+  static uint8_t prev_level = 0xFF;  // For PERIODIC_HEATING, use invalid default to ensure first-time reset
   
   // If the system state is ERROR
   if (system_state == ERROR) {
@@ -382,9 +392,10 @@ void Heat_Control(void)
   }
 
   // If power is set to 0, switch directly to standby state
-  if (power_setting == 0) {
-      system_state = STANDBY; // Set system state to standby
-      stop_heating(); // Stop heating
+  if  (power_level == 0) {
+      stop_heating();         // Stop heating  
+      system_state = STANDBY; // Set system state to standby      
+      last_power_level = 0;   // Reset last_power_level
       return;
   }
 
@@ -395,13 +406,14 @@ void Heat_Control(void)
     return;
   }
   
-	if (target_power != power_setting) {
+	if (last_power_level != power_level) {
     f_power_switching = 1;  //  Indicate power switching and pause protection
+    last_power_level = power_level;
     cntdown_timer_start(CNTDOWN_TIMER_POWER_SWITCHING, 2000); // Start 2s countdown
   }
   
   // Normal heating mode
-  if (power_setting > 800000) {
+  if (power_level >= 4) {
     
   // NOTE: power capping is currently disabled — always use the requested power HCW***
 //    // If power_setting exceeds 1000W and IGBT heat warning is active, apply power cap at 1000W to prevent thermal stress.
@@ -411,13 +423,18 @@ void Heat_Control(void)
 //        target_power = power_setting;
 //    }
     
-    target_power  = power_setting;
-    
     system_state = HEATING;       // Switch system state to HEATING
     
-    if (f_heating_initialized) {
-      f_power_measure_valid = 1;
-    } else {
+//    if (f_heating_initialized) {
+//      f_power_measure_valid = 1;
+//    } else {
+//      // Safety check: If switching from PERIODIC_HEATING to HEATING 
+//      // before heating has been initialized, make sure to disable any
+//      // leftover PWM output or PWM ISR (e.g., from slowdown phase).
+//      pause_heating();
+//    }
+
+    if (!f_heating_initialized) {
       // Safety check: If switching from PERIODIC_HEATING to HEATING 
       // before heating has been initialized, make sure to disable any
       // leftover PWM output or PWM ISR (e.g., from slowdown phase).
@@ -426,10 +443,10 @@ void Heat_Control(void)
   }
   else // Periodic heating mode
   {
-    switch (power_setting) {    // Power level determination
-      case 800000: level = 0; break;
-      case 500000: level = 1; break;
-      case 200000: level = 2; break;
+    switch (power_level) {    // Power level determination
+      case 3: level = 0; break;  //HCW*** level change name
+      case 2: level = 1; break;
+      case 1: level = 2; break;
       default: return; // For safety
     }
     // Reset AC sync counter if level has changed, 
@@ -440,14 +457,11 @@ void Heat_Control(void)
       prev_level = level;
     }
     
-    target_power = PERIODIC_TARGET_POWER;
     system_state = PERIODIC_HEATING; //  Switch system state to periodic heating mode
   }
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define POWER_MEASURE_DELAY_CYCLES  2 // Number of AC sync cycles to delay before measuring power
-
 #define PERIODIC_LEVEL_COUNT    3    // Number of periodic levels (e.g., 800W, 500W, 200W)
 #define PATTERN_COUNT           3    // Number of patterns per level
 
@@ -463,16 +477,16 @@ const PeriodicConfig code BurstMode_basic_table[PERIODIC_LEVEL_COUNT] = {
 };
 
 const PeriodicConfig code BurstMode_dynamic_table[PERIODIC_LEVEL_COUNT][PATTERN_COUNT] = {
-    {{8, 2}, {8, 2}, {8, 2}},     // 800W
-    {{4, 4}, {5, 5}, {4, 4}},     // 500W
-    {{4, 16}, {2, 8}, {4, 16}}    // 200W
+    {{8, 2},  {12, 3},  {8, 2}},    // 800W
+    {{6, 6},  {3, 3},   {4, 4}},    // 500W
+    {{4, 16}, {4, 16},   {5, 20}}   // 200W
 };
 
 // Number of repeat times for each pattern: [pattern][stage]
 const uint8_t code PatternRepeatTimes[PERIODIC_LEVEL_COUNT][PATTERN_COUNT] = {
-    {30, 30, 30},   // 800 W
+    {15, 40, 15},   // 800 W
     {30, 30, 30},   // 500 W
-    {30, 20, 30}    // 200 W
+    {15, 15, 15}    // 200 W
 };
 
 PeriodicHeatState periodic_heat_state = PERIODIC_REST_PHASE;
@@ -499,7 +513,6 @@ void Periodic_Power_Control(void) {
   //  Initialization on first entry to periodic heating
   if (f_first_entry) {
     periodic_AC_sync_cnt = 0;
-    f_power_measure_valid = 0;
     ISR_f_CM3_AC_Periodic_sync = 0;
     
     // Choose starting phase based on whether heating was already initialized
@@ -584,12 +597,7 @@ void Periodic_Power_Control(void) {
       }
       break;
 
-    case PERIODIC_HEAT_PHASE:
-      // Delay power measurement until current signal stabilizes (after two AC sync events)
-      if (periodic_AC_sync_cnt == POWER_MEASURE_DELAY_CYCLES) {
-        f_power_measure_valid = 1;
-      }
-      
+    case PERIODIC_HEAT_PHASE:      
 		  #if BURST_MODE == BURST_MODE_BASIC
 				if (periodic_AC_sync_cnt >= BurstMode_basic_table[level].heat_cycle) 
         {      
@@ -612,7 +620,6 @@ void Periodic_Power_Control(void) {
       // Wait half-cycle then actually stop heating
       if (elapsed_ticks >= ac_half_low_ticks_avg) {
         pause_heating();
-        f_power_measure_valid = 0;
         periodic_heat_state = PERIODIC_REST_PHASE;
       }
       break;
@@ -674,8 +681,10 @@ void init_heating(uint8_t sync_ac_low, PulseWidthSelect pulse_width_select)
     Timer1_Enable();            // T1SF enable
   #endif
   
-  reset_power_read_data();
   f_heating_initialized = 1;    // Mark heating as initialized
+  
+  // POWER_MEASURE_DELAY
+  cntdown_timer_start(CNTDOWN_TIMER_POWER_MEASURE_DELAY, POWER_MEASURE_DELAY_INTERVAL);
   
 }
 
@@ -813,17 +822,20 @@ void Frequency_jitter(void)
 {
   static uint8_t elapsed;
 
-  // Do nothing if heating has not been initialized
-  if (!f_heating_initialized) {
-    f_jitter_in_progress  = 0;
-    f_jitter_active = 0;
-    Frequency_jitter_state = JITTER_HOLD;
-    return;
-  }
-
   // Do nothing if the jitter process has not started
   if (!f_jitter_in_progress )
     return;
+  
+  // Do nothing if heating has not been initialized
+  if  (!f_heating_initialized) {
+      if(Frequency_jitter_state != JITTER_HOLD)
+      {
+        f_jitter_in_progress  = 0;
+        f_jitter_active = 0;
+        Frequency_jitter_state = JITTER_HOLD;
+        return;
+      }
+  }
 
   elapsed = system_ticks - jitter_state_start_tick;
 
@@ -847,12 +859,11 @@ void Frequency_jitter(void)
         break;
 
     case JITTER_INCREASE:
-        if (elapsed >= JITTER_INC_TICKS) {
+        if (jitter_adjust_cnt == 0) {
             PWM_INTERRUPT_DISABLE;
             f_jitter_active = 0;
             f_jitter_in_progress = 0;
             Frequency_jitter_state = JITTER_HOLD;
-            jitter_state_start_tick = system_ticks;
         }
         break;
         

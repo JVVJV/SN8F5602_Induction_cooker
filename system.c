@@ -40,8 +40,9 @@ bit f_pot_detected = 0;
 bit f_block_occurred = 0;
 bit f_power_switching = 0;
 
-uint32_t power_setting = 0;
-uint32_t target_power = 0;
+//uint32_t power_setting = 0; //HCW***
+//uint32_t target_power = 0; //HCW***
+uint8_t power_level = 0;
 
 volatile uint8_t system_ticks = 0;    // system tick counter (unit: 125 μs)
 uint16_t system_time_1ms = 0;         // system time (unit: 1 ms)
@@ -54,7 +55,7 @@ SystemState system_state = STANDBY;   // initial system state is standby, should
 
   #if TUNE_MODE == 1
 //  uint16_t xdata tune_cnt = 0;
-//  uint32_t xdata tune_record1 = 0;
+  uint32_t xdata tune_record1 = 0;
 //  uint32_t xdata tune_record2 = 0;
   #endif
 
@@ -62,7 +63,7 @@ SystemState system_state = STANDBY;   // initial system state is standby, should
 
 /*_____ F U N C T I O N S __________________________________________________*/
 void Pot_Detection(void);
-void Pot_Detection_In_Heating(void);
+void Heating_PowerMeasure_Control(void);
 void shutdown_process(void);
 void finalize_shutdown(void);
 
@@ -285,13 +286,19 @@ void Power_Control(void)
 //      Decrease_PWM_Width(error_flags.f.Current_quick_large ? PWM_ADJUST_QUICK_CHANGE : 1);
 //    }
     
-    // Compare target power with actual measured current_power
-    if (target_power > current_power) {
-      PW0D_delta_req_pwr_ctrl = 1;
-    } else {
-      PW0D_delta_req_pwr_ctrl = -1;
+    if(f_power_measure_ready)
+    {
+      // Compare target power with actual measured current_power
+      if (power_table[power_level] > current_power) {
+        PW0D_delta_req_pwr_ctrl = 2;
+      } else {
+        PW0D_delta_req_pwr_ctrl = -2;
+      }
+      
+      f_power_measure_ready = 0;
+   
+      PWM_INTERRUPT_ENABLE;   // Enable PWM ISR
     }
-    PWM_INTERRUPT_ENABLE;   // Enable PWM ISR
     
 }
 
@@ -337,6 +344,7 @@ void Pot_Detection() {
       CM0M &= ~mskCM0SF;    // Disable CM0 pulse trigger
       PW0D = POT_DETECT_PULSE_WIDTH ;   // set PW0D value for pot detection (6us)
       PW0Y = PWM_MAX_WIDTH;             // set PW0Y to max value as protection
+      
       // Trigger pot detection
       PW0M = mskPW0EN | PW0_DIV1 | PW0_HOSC | PW0_INVERS | mskPW0PO; // set PWM0 to pulse mode
       PW0M1 |= (mskPGOUT);              // trigger pot detection pulse
@@ -398,26 +406,43 @@ void Pot_Detection() {
  * The flag will be cleared in @ref Error_Process when system enters ERROR state.
  */
 
-#define POT_PRESENT_CURRENT_MIN_mA  600 // I_RMS mA 
+#define POT_PRESENT_CURRENT_MIN_mA  2500  // I_RMS mA 
 
-void Pot_Detection_In_Heating(void) 
+bit prev_f_heating_initialized = 0;
+
+void Heating_PowerMeasure_Control(void) 
 {
-  if (!f_heating_initialized)
-  {
-    return;
+  if (!f_heating_initialized) {
+      return;
   }
   
+  if (f_power_measure_valid == 0)
+  {
+      // Wait for 18ms countdown to expire
+      if  (!cntdown_timer_expired(CNTDOWN_TIMER_POWER_MEASURE_DELAY)) {
+          return;
+        
+      } else {
+          // Set power measurement valid flag
+          f_power_measure_valid = 1;
+          reset_power_read_data();
+      }
+  }
+
+  //
   if (f_power_updated)
   {
     if (current_RMS_mA < POT_PRESENT_CURRENT_MIN_mA)
     {
       error_flags.f.Pot_missing = 1;  // Pot not detected due to low current
+      
       // Simply stop the heating logic
       P01 = 1;  //PWM Pin
       PW0M = 0;
       PWM_INTERRUPT_DISABLE;
     }
   }
+  
   
 }
 

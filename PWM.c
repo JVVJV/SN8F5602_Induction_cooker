@@ -14,6 +14,7 @@
 #include "power.h"
 #include "system.h"
 #include "comparator.h"
+#include "timer2.h"
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 
@@ -54,6 +55,12 @@ void PWM0_ISR(void) interrupt ISRPwm0
 {
   int tmp;
   
+  // Patch for T2
+  T2CH = 0x00;        // T2C clear
+  T2CL = 0x00;
+  
+  P10 = ~P10; //HCW***
+  
   if(PW0D_lock)
   {
     return;
@@ -82,7 +89,7 @@ void PWM0_ISR(void) interrupt ISRPwm0
       }
 
       PW0D_req_quick_surge = 0;
-		
+      
       if (!f_jitter_active) {
         PWM_INTERRUPT_DISABLE;
       }
@@ -93,9 +100,9 @@ void PWM0_ISR(void) interrupt ISRPwm0
     // IGBT_High-voltage protection (decrease PW0D)
     if (PW0D_req_CMP2_isr) {
       PW0D_req_CMP2_isr = FALSE;
-
-      if ((PW0D >= (3 + PWM_MIN_WIDTH))) {
-        PW0D -= 3;
+      
+      if ((PW0D >= (IGBT_OV_PROTECT_DEC_WIDTH + PWM_MIN_WIDTH))) {
+        PW0D -= IGBT_OV_PROTECT_DEC_WIDTH;
       } else {
         PW0D = PWM_MIN_WIDTH;
       }
@@ -124,17 +131,22 @@ void PWM0_ISR(void) interrupt ISRPwm0
     }
 		
     // Frequency jitter control
-    if (Frequency_jitter_state == JITTER_DECREASE) {
-      if (PW0D > PWM_MIN_WIDTH) {
-          PW0D--;
-          jitter_adjust_cnt++;
-      }
+    if  (Frequency_jitter_state == JITTER_DECREASE) {
+        if  (PW0D > PWM_MIN_WIDTH) {
+            PW0D--;
+            jitter_adjust_cnt++;
+        }
     } else if (Frequency_jitter_state == JITTER_INCREASE) {
-      if ((PW0D < PWM_MAX_WIDTH) && (jitter_adjust_cnt > 0)) {
-          PW0D++;
-          jitter_adjust_cnt--;
+        if  (PW0D < PWM_MAX_WIDTH) {
+            if  (jitter_adjust_cnt > 0) {
+                PW0D++;
+                jitter_adjust_cnt--;
+            }
+        } else {
+          jitter_adjust_cnt = 0;
         }
     }
+    
   }// heating logic end
   
   ISR_EXIT:

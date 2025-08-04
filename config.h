@@ -27,6 +27,13 @@
 // Select desired AC frequency mode here:
 #define AC_FREQ_MODE  AC_FREQ_MODE_FORCE_50HZ
 
+
+#if AC_FREQ_MODE == AC_FREQ_MODE_FORCE_50HZ
+  #define POWER_MEASURE_DELAY_INTERVAL  18  // 18ms < 2*AC(50Hz) 
+#elif AC_FREQ_MODE == AC_FREQ_MODE_FORCE_60HZ
+  #define POWER_MEASURE_DELAY_INTERVAL  15  // 15ms < 2*AC(60Hz) 
+#endif
+
 // ----------------------------------------------------------------------------------------
 // Burstmode Control
 #define BURST_MODE_BASIC         0   // Heat & rest cycle combination is fixed
@@ -35,13 +42,16 @@
 #define BURST_MODE  BURST_MODE_DYNAMIC
 
 
-#define PERIODIC_TARGET_POWER     1000000 // 1000 000mW
-
 // ----------------------------------------------------------------------------------------
 #define CURRENT_ADC_CHANNEL       19  // OPO  defines ADC channel for current measurement 
 #define VOLTAGE_ADC_CHANNEL       7   // AIN7 defines ADC channel for AC mains voltage measurement
 #define IGBT_TEMP_ADC_CHANNEL     1   // AIN1
 #define TOP_TEMP_ADC_CHANNEL      2   // AIN2
+
+
+// ----------------------------------------------------------------------------------------
+// IGBT OverVoltage Protection
+#define IGBT_OV_PROTECT_DEC_WIDTH   288 // @32MHz = 9us
 
 // ----------------------------------------------------------------------------------------
 //#define PWM_MAX_WIDTH           960       // Max PWM width: 960cnt @32MHz = 30us
@@ -64,9 +74,9 @@
                                             // leading to IGBT overheating.
                                             
 // ----------------------------------------------------------------------------------------
-#define VOLTAGE_CHANGE_THRESHOLD 20     // Voltage change > 20V is considered a rapid change
-#define CURRENT_CHANGE_THRESHOLD 1000   // Current change > 1000mA is considered a rapid change
-#define QUICK_SURGE_MODIFY_WIDTH 10
+#define VOLTAGE_CHANGE_THRESHOLD 20   // Voltage change > 20V is considered a rapid change
+#define CURRENT_CHANGE_THRESHOLD 150  // Current change > 100mA is considered a rapid change
+#define QUICK_SURGE_MODIFY_WIDTH 50
 
 // ----------------------------------------------------------------------------------------
 #define T2SF_MARGIN     64      // 2us @ 32MHz

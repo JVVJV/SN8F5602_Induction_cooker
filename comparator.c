@@ -93,8 +93,9 @@ void Comparator_Init(void)
   //CM2REF = CM2REF_INTREF | 38;  //700V
   //CM2REF = CM2REF_INTREF | 44;  //800V
   //CM2REF = CM2REF_INTREF | 50;  //900V
+  //CM2REF = CM2REF_INTREF | 55;  //1000V
   
-  CMDB2 = CM2_DEBOUNCE_8FCPU; // 0.5us
+  CMDB2 = CM2_DEBOUNCE_4FCPU; // 0.25us
   CM2M = mskCM2EN |CM2_FALLING_TRIGGER; // Disable CM2SF HCW***
   IEN2 |= mskECMP2;
   
@@ -217,6 +218,7 @@ void comparator2_ISR(void) interrupt ISRCmp2
     PW0F_CLEAR;
     PWM_INTERRUPT_ENABLE;
   }
+  
 }
 
 
@@ -239,6 +241,11 @@ volatile uint8_t CM3_last_sync_tick = 0; // Record the time when `ISR_f_CM3_AC_s
 
 void comparator3_ISR(void) interrupt ISRCmp3
 {
+  // Patch for T2    
+  T2CH = 0x00;        // T2C clear
+  T2CL = 0x00;
+  P10 = ~P10; //HCW***
+  
   // **Ensure that `ISR_f_CM3_AC_sync` is only triggered within a new AC cycle**
   if ((uint8_t)(system_ticks - CM3_last_sync_tick) >= AC_SYNC_DEBOUNCE_TICKS) {
     ISR_f_CM3_AC_sync = 1;

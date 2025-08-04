@@ -42,6 +42,7 @@ typedef enum {
 extern bit f_heating_initialized;
 extern bit f_power_measure_valid;
 extern bit f_power_updated;
+extern bit f_power_measure_ready;
 extern uint8_t level;
 extern uint8_t periodic_AC_sync_cnt;
 extern PeriodicHeatState periodic_heat_state;
@@ -51,6 +52,7 @@ extern bit f_jitter_active;
 extern bit f_power_switching;
 extern bit f_orig_power_set;
 extern volatile bit PW0D_req_quick_surge;
+extern const uint32_t code power_table[10];
 
 
 /*_____ M A C R O S ________________________________________________________*/

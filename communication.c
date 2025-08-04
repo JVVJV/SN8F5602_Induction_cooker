@@ -14,6 +14,7 @@
 #include "system.h"
 #include "temperature.h"
 #include "config.h"
+#include "power.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 
@@ -38,17 +39,17 @@ void I2C_Communication(void) {
         i2c_comm_fail_count = 0;  // Reset failure counter
         
         switch (i2c_buffer[0]) {
-          case 0x00: power_setting = 0; break;
-          case 0x44: power_setting = 200000; break;
-          case 0x48: power_setting = 500000; break;
-          case 0x49: power_setting = 800000; break;
-          case 0x4A: power_setting = 1000000; break;
-          case 0x4B: power_setting = 1300000; break;
-          case 0x4C: power_setting = 1600000; break;
-          case 0x4D: power_setting = 1800000; break;
-          case 0x4E: power_setting = 2000000; break;
-          case 0x4F: power_setting = 2000000; break; // HCW*** not support 2.2KW
-          default:   power_setting = 0;       break; // Invalid data
+          case 0x00: power_level = 0; break;  // 0 W
+          case 0x44: power_level = 1; break;  // 200 W
+          case 0x48: power_level = 2; break;  // 500 W
+          case 0x49: power_level = 3; break;  // 800 W
+          case 0x4A: power_level = 4; break;  // 1000 W
+          case 0x4B: power_level = 5; break;  // 1300 W
+          case 0x4C: power_level = 6; break;  // 1600 W
+          case 0x4D: power_level = 7; break;  // 1800 W
+          case 0x4E: power_level = 8; break;  // 2000 W
+          case 0x4F: power_level = 9; break;  // Not support 2.2K WHCW***
+          default:   power_level = 0; break;  // Invalid data
         }
       } else {
         // No response: count failures and reinit after 6

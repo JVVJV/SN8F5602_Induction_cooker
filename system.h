@@ -49,16 +49,16 @@ typedef union {
 
 
 typedef enum {
-  TASK_HEAT_CONTROL,            // 加熱控制任務  
-  TASK_POWER_CONTROL,           // 功率控制任務
-  TASK_QUICK_CHANGE_DETECT,     // 快速變化檢測任務
-  
-  TASK_TEMP_MEASURE,            // 溫度測量任務
-  TASK_TEMP_PROCESS,            // 溫度處理任務
-    
-  TASK_CURRENT_POT_CHECK,       // 電流檢鍋任務
-  TASK_SHUTDOWN,                // 關機任務
-  TASK_ERROR_PROCESS            // 錯誤處理任務
+  TASK_HEAT_CONTROL,            // Heating control task
+  TASK_POWER_CONTROL,           // Power control task
+  TASK_QUICK_CHANGE_DETECT,     // Quick change detection task
+
+  TASK_TEMP_MEASURE,            // Temperature measurement task
+  TASK_TEMP_PROCESS,            // Temperature processing task
+
+  TASK_POWERMEASURE_CONTROL,    // Power measurement control task
+  TASK_SHUTDOWN,                // Shutdown task
+  TASK_ERROR_PROCESS            // Error processing task
 } TaskType;
 
 
@@ -90,6 +90,8 @@ typedef enum {
 #define CNTDOWN_TIMER_POWER_SWITCHING             1 // 2 second power_switching
 #define CNTDOWN_TIMER_POWER_CONTROL               2 // 控制 4ms POWER_CONTROL
 #define CNTDOWN_TIMER_I2C                         3 // I2C 計時器 ID
+#define CNTDOWN_TIMER_POWER_MEASURE_DELAY         4 // 
+
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit ISR_f_125us;
@@ -105,8 +107,7 @@ extern volatile bit ISR_f_Surge_Overcurrent_error; // By CM4
 extern volatile bit ISR_f_Unexpected_halt; // By T1SF
 
 extern SystemState system_state;
-extern uint32_t power_setting;
-extern uint32_t target_power;
+extern uint8_t power_level;
 extern TaskType current_task; // 當前任務
 //extern uint16_t voltage_IIR_new;         // 目前濾波後電壓
 //extern uint16_t current_IIR_new;         // 目前濾波後電流
@@ -154,7 +155,7 @@ void Power_Control(void);
 void PWM_Request_Reset(void);
 void Pot_Detection(void);
 void Pot_Analyze(void);
-void Pot_Detection_In_Heating(void);
+void Heating_PowerMeasure_Control(void);
 void Shutdown_Task(void);
 void Measure_AC_Low_Time(void);
 void Detect_AC_Frequency(void);

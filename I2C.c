@@ -8,6 +8,7 @@
  
 /*_____ I N C L U D E S ____________________________________________________*/
 #include "I2C.h"
+#include "timer2.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
 #define SLAVE_ADDRESS  0x55
@@ -113,6 +114,11 @@ void I2C_Read(uint8_t slave_addr, uint8_t *databuf, uint8_t length) {
  * @brief  I2C interrupt service routine handles all states.
  */
 void I2C_ISR(void) interrupt ISRI2c {
+    // Patch for T2
+    T2CH = 0x00;        // T2C clear
+    T2CL = 0x00;
+    P10 = ~P10; //HCW***
+  
     switch (I2CSTA) {
         case 0x08: // **Start Condition Transmitted**
         case 0x10: // **Repeated Start**

@@ -130,18 +130,18 @@ void main (void)
           
         case TASK_TEMP_PROCESS:
             Temp_Process();
-            current_task = TASK_CURRENT_POT_CHECK; // Next task
+            current_task = TASK_POWERMEASURE_CONTROL; // Next task
             break;
 
-        case TASK_CURRENT_POT_CHECK:
-            Pot_Detection_In_Heating();
-            current_task = TASK_SHUTDOWN; // Next task
-            break;
-
-        case TASK_SHUTDOWN:
-            //Shutdown_Task();  // Execute shutdown task
+        case TASK_POWERMEASURE_CONTROL:
+            Heating_PowerMeasure_Control();
             current_task = TASK_ERROR_PROCESS; // Next task
             break;
+
+//        case TASK_SHUTDOWN:
+//            //Shutdown_Task();  // Execute shutdown task
+//            current_task = TASK_ERROR_PROCESS; // Next task
+//            break;
 
         case TASK_ERROR_PROCESS:
             Error_Process();  // Handle error task

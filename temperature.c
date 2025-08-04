@@ -253,9 +253,9 @@ typedef enum {
 static NTC_MONITOR_STATE NTC_monitor_state = TEMP_IDLE;
 
 static int      xdata NTC_tracked_temp    = 0;
-static uint32_t xdata NTC_tracked_power   = 0;
+static uint8_t  xdata NTC_tracked_power_level = 0;
 static int      xdata NTC_stable_temp     = 0;
-static uint32_t xdata NTC_stable_power    = 0;
+static uint8_t  xdata NTC_stable_power_level = 0;
 static uint8_t NTC_stable_start_time_s    = 0;
 static uint8_t NTC_monitor_start_time_s   = 0;
 
@@ -267,16 +267,16 @@ void NTC_monitor_Process(void)
     case TEMP_IDLE:
       if (IGBT_TEMP_C > NTC_tracked_temp + TEMP_STABLE_THRESHOLD ||
           IGBT_TEMP_C < NTC_tracked_temp ||
-          power_setting != NTC_tracked_power) {
+          power_level != NTC_tracked_power_level) {
           // Reset tracking due to temp or power change
           NTC_tracked_temp = IGBT_TEMP_C;
           NTC_stable_start_time_s = (uint8_t)system_time_1s;
-          NTC_tracked_power = power_setting;
+          NTC_tracked_power_level = power_level;
       } else {
           uint8_t elapsed = (uint8_t)(system_time_1s - NTC_stable_start_time_s);
           if (elapsed >= TEMP_STABLE_DURATION_S) {
               // Both temperature and power are stable → record as reference
-              NTC_stable_power = power_setting;
+              NTC_stable_power_level = power_level;
               NTC_stable_temp  = IGBT_TEMP_C;
               NTC_monitor_state = TEMP_STABLE_READY;
           }
@@ -285,7 +285,7 @@ void NTC_monitor_Process(void)
 
     /* --- State 2: Wait for power change to trigger monitoring --- */
     case TEMP_STABLE_READY:
-      if (power_setting != NTC_stable_power) {
+      if (power_level != NTC_stable_power_level) {
           NTC_monitor_start_time_s = (uint8_t)system_time_1s;
           NTC_monitor_state        = TEMP_MONITORING;
       }
@@ -293,7 +293,7 @@ void NTC_monitor_Process(void)
 
     /* --- State 3: Monitor temperature reaction after power change --- */
     case TEMP_MONITORING:
-      if (IGBT_TEMP_C != NTC_stable_temp || power_setting == NTC_stable_power) {
+      if (IGBT_TEMP_C != NTC_stable_temp || power_level == NTC_stable_power_level) {
           // Temperature changed → normal behavior
           // Power reverted to original → cancel monitoring
           NTC_monitor_state = TEMP_IDLE;
