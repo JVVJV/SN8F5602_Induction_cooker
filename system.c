@@ -408,8 +408,6 @@ void Pot_Detection() {
 
 #define POT_PRESENT_CURRENT_MIN_mA  2500  // I_RMS mA 
 
-bit prev_f_heating_initialized = 0;
-
 void Heating_PowerMeasure_Control(void) 
 {
   if (!f_heating_initialized) {
