@@ -172,7 +172,7 @@ const LookupEntry code lookupTable[TABLE_SIZE] = {
 };
 // To save computational resources on an 8-bit MCU, we use fixed-point arithmetic.
 // We choose SCALE_BITS = 8 (i.e., multiply by 256).
-// The fixed slope is 3.614397; its fixed-point representation is: 3.614397 * 256 ??? 925.
+// The fixed slope is 3.614397; its fixed-point representation is: 3.614397 *256 ~= 925.
 #define SCALE_BITS 8
 #define FIXED_SLOPE 925
 
@@ -415,7 +415,7 @@ void Heat_Control(void)
   // Normal heating mode
   if (power_level >= 4) {
     
-  // NOTE: power capping is currently disabled ??? always use the requested power HCW***
+  // NOTE: power capping is currently disabled - always use the requested power HCW***
 //    // If power_setting exceeds 1000W and IGBT heat warning is active, apply power cap at 1000W to prevent thermal stress.
 //    if (warning_flags.f.IGBT_heat_warning) {
 //        target_power = 1000000;

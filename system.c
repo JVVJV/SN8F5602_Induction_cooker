@@ -44,7 +44,7 @@ bit f_power_switching = 0;
 //uint32_t target_power = 0; //HCW***
 uint8_t power_level = 0;
 
-volatile uint8_t system_ticks = 0;    // system tick counter (unit: 125 Î¼s)
+volatile uint8_t system_ticks = 0;    // system tick counter (unit: 125 us)
 uint16_t system_time_1ms = 0;         // system time (unit: 1 ms)
 uint16_t system_time_1s = 0;          // system time (unit: 1 s)
 
@@ -457,43 +457,43 @@ void Heating_PowerMeasure_Control(void)
 
 //void Pot_Analyze(void) {
 //    static uint8_t xdata record_count = 0;
-//    static uint16_t xdata PW0D_val[4];  // è¨???? 4 æ¬? PWM å¯¬åº¦
+//    static uint16_t xdata PW0D_val[4];  // Record 4 times of PWM duty cycle
 //    uint16_t sum;
 //    uint8_t i;
 //    
 //    switch (pot_analyze_state) {
 //      case PWR_UP:
-//        // **ç¬¬ä??æ­¥ï?????å§??????±ä¸¦??²å?¥ç©©å®?ç­?å¾???????**
+//        // **First-time startup: set target power for detection and prepare state**
 //        target_power = POT_ANALYZE_POWER;
-//        record_count = 0;  // ç¢ºä??è¨???¸å?¨æ­¸???
+//        record_count = 0;  // Reset record counter
 //        system_state = HEATING;
 
-//        // **?????? 1 ç§??????¸è?????**
+//        // **Start a 1-second stabilization timer**
 //        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_STABLE_TIME);
 //        pot_analyze_state = WAIT_STABILIZATION;
 //        break;
 
 //      case WAIT_STABILIZATION:        
-//        // **ç­?å¾? 1 ç§?ç©©å??**
+//        // **Wait for 1-second stabilization**
 //        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
-//            return; // ç­?å¾?????????ªå?°ï??ä¿??????¶å????????
+//            return; // Still waiting, exit early
 //        }
 
-//        // **1 ç§?çµ????å¾?ï¼????å§?è¨????**
-//        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL); // ?????? 100ms è¨????è¨????
+//        // **After 1 second, begin recording**
+//        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL); // Start 100ms sampling
 //        pot_analyze_state = RECORDING;
 //        break;
 
 //      case RECORDING:
-//        // **ç­?å¾? 100ms ???æ¨???????**
+//        // **Wait 100ms between each sampling**
 //        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
 //            return;
 //        }
 
-//        // **?????°å????? 100ms è¨????è¨????**
+//        // **Start the next 100ms sampling timer**
 //        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL);
 
-//        // **æª¢æ?¥å???????¯å?¦ç©©å®?**
+//        // **If power is within expected range, use actual value; otherwise, use default**
 //        if((current_power >= (POT_ANALYZE_POWER-POWER_STABILITY_THRESHOLD)) &&  
 //           (current_power <= (POT_ANALYZE_POWER+POWER_STABILITY_THRESHOLD))     )
 //        { PW0D_val[record_count] = PW0D; }
@@ -501,34 +501,35 @@ void Heating_PowerMeasure_Control(void)
 //        { PW0D_val[record_count] = DEFAULT_1000W_PW0D_VAL; }
 //        record_count++;
 //        
-//        // **??? 4 æ¬¡è?????å®????å¾?ï¼?è¨?ç®?å¹³å??**
+//        // **After 4 samples, compute the average**
 //        if (record_count >= 4) {
 //          // Align with the AC zero-crossing to prevent surge protection 
 //          // from triggering due to rapid voltage rebound after pause_heating.
 //          ISR_f_CM3_AC_sync = 0;
 //          while(ISR_f_CM3_AC_sync == 0);
-//          // ???æ­¢å?????
+//          // Pause heating
 //          pause_heating();
 //          
 //          sum = 0;
 //          for (i = 0; i < 4; i++) {
 //              sum += PW0D_val[i];
 //          }
-//          recorded_1000W_PW0D = (sum>>2);  // è¨????å¹³å????? = sum/4
+//          recorded_1000W_PW0D = (sum>>2);  // Average = sum / 4
 //          if(recorded_1000W_PW0D > 640)
 //          {
-//            recorded_1000W_PW0D  = 640; //HCW**
+//            recorded_1000W_PW0D  = 640; // Cap max value
 //          }
-//          // **??????å®????è¨­ç½® `f_pot_detected = 1`**
+//          // **Set flags to indicate detection complete**
 //          f_pot_detected = 1;
 //          f_pot_analyzed = 1;
-//          // **???ç½®ç?????ï¼?ä»¥ä¾¿ä¸?æ¬¡æ¸¬???**
+//          // **Reset state to allow another analysis cycle**
 //          pot_analyze_state = PWR_UP;
 //        }
 //        break;
 //    }
 //    
 //}
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define AC_PERIOD_COUNT 4   // Average over 4 periods
@@ -545,7 +546,7 @@ void Measure_AC_Low_Time(void) {
     uint8_t sum = 0;
     uint8_t start_ticks;
   
-//    // Wait ISR_f_CM3_AC_sync         // HCW*** It???s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM3_ISR, 
+//    // Wait ISR_f_CM3_AC_sync         // HCW*** It's not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM3_ISR, 
 //    while (ISR_f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC???s rising edge.
   
     // Wait for the AC signal to stabilize and collect four measurements
@@ -584,7 +585,7 @@ void Measure_AC_Low_Time(void) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define AC_FREQUENCY_SAMPLES  4   // Number of measurements to average
-#define AC_60HZ_THRESHOLD     73  // 60Hz threshold ï¼?73 system_ticksï¼?
+#define AC_60HZ_THRESHOLD     73  // 60Hz threshold (73 system_ticks)
 
 bit f_AC_50Hz = 0; // AC frequency flag: 1 = 50Hz, 0 = 60Hz
 uint8_t xdata ac_ticks[AC_FREQUENCY_SAMPLES];
@@ -652,10 +653,10 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if (  ISR_f_Surge_Overvoltage_error ||  
-          ISR_f_Surge_Overcurrent_error ||  
-          ISR_f_I2C_error ||                
-          ISR_f_Unexpected_halt ||          
+    if (  ISR_f_Surge_Overvoltage_error ||  \
+          ISR_f_Surge_Overcurrent_error ||  \
+          ISR_f_I2C_error ||                \
+          ISR_f_Unexpected_halt ||          \
           error_flags.all_flags ) 
     {
       system_state = ERROR;
