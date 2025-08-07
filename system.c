@@ -22,8 +22,8 @@
 #define SYSTEM_TICKS_PER_1MS    8     // 125us*8 = 1ms
 #define SYSTEM_1MS_PER_SECOND   1000  // 1ms*1000 = 1s
 
-#define SHUTDOWN_DURATION_SECONDS 60  // 60 seconds
-#define SHUTDOWN_TEMP_THRESHOLD   50  // 50°C
+#define SHUTDOWN_DURATION_SECONDS 60   // Shutdown duration in seconds
+#define SHUTDOWN_TEMP_THRESHOLD   50   // Shutdown temperature threshold (�XC)
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 static uint16_t cntdown_timers[MAX_CNTDOWN_TIMERS]; // countdown timer array
@@ -457,43 +457,43 @@ void Heating_PowerMeasure_Control(void)
 
 //void Pot_Analyze(void) {
 //    static uint8_t xdata record_count = 0;
-//    static uint16_t xdata PW0D_val[4];  // 記錄 4 次 PWM 寬度
+//    static uint16_t xdata PW0D_val[4];  // �???? 4 �? PWM 寬度
 //    uint16_t sum;
 //    uint8_t i;
 //    
 //    switch (pot_analyze_state) {
 //      case PWR_UP:
-//        // **第一步：開始加熱並進入穩定等待狀態**
+//        // **第�??步�?????�??????�並??��?�穩�?�?�???????**
 //        target_power = POT_ANALYZE_POWER;
-//        record_count = 0;  // 確保計數器歸零
+//        record_count = 0;  // 確�??�???��?�歸???
 //        system_state = HEATING;
 
-//        // **啟動 1 秒倒數計時**
+//        // **?????? 1 �??????��?????**
 //        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_STABLE_TIME);
 //        pot_analyze_state = WAIT_STABILIZATION;
 //        break;
 
 //      case WAIT_STABILIZATION:        
-//        // **等待 1 秒穩定**
+//        // **�?�? 1 �?穩�??**
 //        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
-//            return; // 等待時間未到，保持當前狀態
+//            return; // �?�?????????��?��??�??????��????????
 //        }
 
-//        // **1 秒結束後，開始記錄**
-//        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL); // 啟動 100ms 記錄計時
+//        // **1 �?�????�?�????�?�????**
+//        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL); // ?????? 100ms �????�????
 //        pot_analyze_state = RECORDING;
 //        break;
 
 //      case RECORDING:
-//        // **等待 100ms 取樣間隔**
+//        // **�?�? 100ms ???�???????**
 //        if (!cntdown_timer_expired(CNTDOWN_TIMER_POT_DETECT)) {
 //            return;
 //        }
 
-//        // **重新啟動 100ms 記錄計時**
+//        // **?????��????? 100ms �????�????**
 //        cntdown_timer_start(CNTDOWN_TIMER_POT_DETECT, POWER_SAMPLE_INTERVAL);
 
-//        // **檢查功率是否穩定**
+//        // **檢�?��???????��?�穩�?**
 //        if((current_power >= (POT_ANALYZE_POWER-POWER_STABILITY_THRESHOLD)) &&  
 //           (current_power <= (POT_ANALYZE_POWER+POWER_STABILITY_THRESHOLD))     )
 //        { PW0D_val[record_count] = PW0D; }
@@ -501,28 +501,28 @@ void Heating_PowerMeasure_Control(void)
 //        { PW0D_val[record_count] = DEFAULT_1000W_PW0D_VAL; }
 //        record_count++;
 //        
-//        // **當 4 次記錄完成後，計算平均**
+//        // **??? 4 次�?????�????�?�?�?�?平�??**
 //        if (record_count >= 4) {
 //          // Align with the AC zero-crossing to prevent surge protection 
 //          // from triggering due to rapid voltage rebound after pause_heating.
 //          ISR_f_CM3_AC_sync = 0;
 //          while(ISR_f_CM3_AC_sync == 0);
-//          // 停止加熱
+//          // ???止�?????
 //          pause_heating();
 //          
 //          sum = 0;
 //          for (i = 0; i < 4; i++) {
 //              sum += PW0D_val[i];
 //          }
-//          recorded_1000W_PW0D = (sum>>2);  // 記錄平均值 = sum/4
+//          recorded_1000W_PW0D = (sum>>2);  // �????平�????? = sum/4
 //          if(recorded_1000W_PW0D > 640)
 //          {
 //            recorded_1000W_PW0D  = 640; //HCW**
 //          }
-//          // **分析完成設置 `f_pot_detected = 1`**
+//          // **??????�????設置 `f_pot_detected = 1`**
 //          f_pot_detected = 1;
 //          f_pot_analyzed = 1;
-//          // **重置狀態，以便下次測量**
+//          // **???置�?????�?以便�?次測???**
 //          pot_analyze_state = PWR_UP;
 //        }
 //        break;
@@ -545,8 +545,8 @@ void Measure_AC_Low_Time(void) {
     uint8_t sum = 0;
     uint8_t start_ticks;
   
-//    // Wait ISR_f_CM3_AC_sync         // HCW*** It’s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM3_ISR, 
-//    while (ISR_f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC’s rising edge.
+//    // Wait ISR_f_CM3_AC_sync         // HCW*** It???s not necessary because, after applying the Warmup_Delay and the 4ms debounce in the CM3_ISR, 
+//    while (ISR_f_CM3_AC_sync == 0);   // we can ensure the CM3_last_sync_tick is only set on the AC???s rising edge.
   
     // Wait for the AC signal to stabilize and collect four measurements
     for (i = 0; i < AC_PERIOD_COUNT; i++) {
@@ -584,7 +584,7 @@ void Measure_AC_Low_Time(void) {
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define AC_FREQUENCY_SAMPLES  4   // Number of measurements to average
-#define AC_60HZ_THRESHOLD     73  // 60Hz threshold （73 system_ticks）
+#define AC_60HZ_THRESHOLD     73  // 60Hz threshold �?73 system_ticks�?
 
 bit f_AC_50Hz = 0; // AC frequency flag: 1 = 50Hz, 0 = 60Hz
 uint8_t xdata ac_ticks[AC_FREQUENCY_SAMPLES];
@@ -652,10 +652,10 @@ void Error_Process(void)
     
   // If system is not in ERROR state, check if it needs to enter ERROR
   if (system_state != ERROR) {
-    if (  ISR_f_Surge_Overvoltage_error ||  \ 
-          ISR_f_Surge_Overcurrent_error ||  \
-          ISR_f_I2C_error ||                \
-          ISR_f_Unexpected_halt ||          \
+    if (  ISR_f_Surge_Overvoltage_error ||  
+          ISR_f_Surge_Overcurrent_error ||  
+          ISR_f_I2C_error ||                
+          ISR_f_Unexpected_halt ||          
           error_flags.all_flags ) 
     {
       system_state = ERROR;

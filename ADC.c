@@ -42,6 +42,7 @@ void select_ADC_channel(uint8_t channel) {
   ADM =  (ADM & ~0x1F) | channel;
 }
 
+
 /**
  * @brief Measure specified ADC channel ADC_SAMPLE_COUNT times and compute the average.
  *
@@ -54,7 +55,6 @@ void select_ADC_channel(uint8_t channel) {
  * @note The function assumes the channel is within the valid range and
  *       uses simple averaging without outlier removal.
  */
-
 void ADC_measure_4_avg(uint8_t channel, uint16_t *result) {
     //uint16_t samples[4];  // Buffer for 4 measurement results
     uint16_t sum = 0;
@@ -62,8 +62,6 @@ void ADC_measure_4_avg(uint8_t channel, uint16_t *result) {
 
     // Switch to the specified ADC channel
     select_ADC_channel(channel);
-  
-    // Measure ADC_SAMPLE_COUNT times continuously
     for (i = 0; i < ADC_SAMPLE_COUNT; i++) {
         START_ADC_CONVERSION;
         while (IS_ADC_FINISH == 0);

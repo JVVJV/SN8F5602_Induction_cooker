@@ -30,8 +30,8 @@
 
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
-#define SYSTEM_TICKS_PER_10MS   80    // Count per 10 ms (125 us * 80 = 10 ms)
-#define SYSTEM_10MS_PER_SECOND  100   // Number of 10 ms units per second
+#define SYSTEM_TICKS_PER_10MS   80    // Number of 125us ticks per 10ms (125us * 80 = 10ms)
+#define SYSTEM_10MS_PER_SECOND  100   // Number of 10ms units per second
 
 TaskType current_task = TASK_HEAT_CONTROL;
 
@@ -64,7 +64,7 @@ void main (void)
   GPIO_Init();            // Initialize GPIO configuration
   Timer0_Init();          // Initialize Timer0 for 125 us interrupts
   Timer1_Init();          // Initialize Timer1 for T1SF
-	Timer2_Init();          // Initialize Timer2 for T2SF
+  Timer2_Init();          // Initialize Timer2 for T2SF
   Comparator_Init();      // Initialize comparators (CM0, CM1, CM2)
   OP_Amp_Init();          // Initialize operational amplifiers for current measurement
   PWM_Init();             // Initialize PWM for IGBT driving

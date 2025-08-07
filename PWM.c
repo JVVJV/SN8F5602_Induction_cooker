@@ -24,10 +24,16 @@
 
 /*_____ F U N C T I O N S __________________________________________________*/
 
+/**
+ * @brief Initialize PWM hardware and configuration.
+ *
+ * Sets up PWM registers, disables SFDL (to avoid hardware bug),
+ * and sets interrupt priority.
+ */
 void PWM_Init(void)
 {
   PW0M = 0;
-  PW0Y = PWM_MAX_WIDTH; // 設定 PW0Y 為最大值 patch, 防止不小心反向
+  PW0Y = PWM_MAX_WIDTH; // Set PW0Y to max value (patch, prevent accidental reverse)
   
   // HCW*** Do not enable SFDL, as turning it on introduces a bug when reading/write PW0D.
   //PW0M1 = mskSFDL;
@@ -81,8 +87,8 @@ void PWM0_ISR(void) interrupt ISRPwm0
   // In heating logic
   if (f_heating_initialized) {
     // Quick change protect request (±1)
-		if (PW0D_req_quick_surge) {
-			if ((PW0D >= (QUICK_SURGE_MODIFY_WIDTH + PWM_MIN_WIDTH))) {
+    if (PW0D_req_quick_surge) {
+      if ((PW0D >= (QUICK_SURGE_MODIFY_WIDTH + PWM_MIN_WIDTH))) {
         PW0D -= QUICK_SURGE_MODIFY_WIDTH;
       } else {
         PW0D = PWM_MIN_WIDTH;
@@ -94,8 +100,8 @@ void PWM0_ISR(void) interrupt ISRPwm0
         PWM_INTERRUPT_DISABLE;
       }
 
-			goto ISR_EXIT;
-		}
+      goto ISR_EXIT;
+    }
     
     // IGBT_High-voltage protection (decrease PW0D)
     if (PW0D_req_CMP2_isr) {
@@ -129,7 +135,7 @@ void PWM0_ISR(void) interrupt ISRPwm0
       
       goto ISR_EXIT;
     }
-		
+    
     // Frequency jitter control
     if  (Frequency_jitter_state == JITTER_DECREASE) {
         if  (PW0D > PWM_MIN_WIDTH) {

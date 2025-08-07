@@ -1,0 +1,52 @@
+# Object files and build output
+*.o
+obj/
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.m51
+*.out
+*.a
+*.d
+lst/
+*.lst
+*.srec
+
+# Dependency files
+*.d
+
+# IDE-generated files (Keil MDK-ARM)
+*.uvoptx
+*.uvguix
+*.bak
+*.dep
+*.axf
+*.htm
+*.lnp
+*.uvopt
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# OS and editor specific
+.DS_Store
+Thumbs.db
+
+# Backup files
+*~
+*.old
+*.orig
+*.bak
+
+# Executable files
+*.exe
+
+# markdown files
+*.md
+
+# vscode files
+.vscode/

@@ -51,7 +51,7 @@ static bit f_temp_updated = 0;            // Temperature update flag
 * Table Generator: https://www.sebulli.com/ntc/
 */
 const int code IGBT_NTC_table[129] = {
-	362, 308, 254, 226, 208, 195, 185, 176, 169, 
+  362, 308, 254, 226, 208, 195, 185, 176, 169, 
   163, 158, 153, 148, 144, 141, 137, 134, 131, 
   129, 126, 124, 121, 119, 117, 115, 113, 111, 
   110, 108, 106, 105, 103, 102, 100, 99, 97, 
@@ -77,7 +77,7 @@ const int code IGBT_NTC_table[129] = {
 * Table Generator: https://www.sebulli.com/ntc/
 */
 const int code TOP_NTC_table[129] = {
-	-16, -2, 12, 20, 27, 32, 37, 41, 44, 47, 
+  -16, -2, 12, 20, 27, 32, 37, 41, 44, 47, 
   50, 53, 56, 58, 61, 63, 65, 67, 69, 71, 73, 
   74, 76, 78, 79, 81, 82, 84, 86, 87, 88, 90, 
   91, 93, 94, 95, 97, 98, 99, 101, 102, 103, 
@@ -275,7 +275,7 @@ void NTC_monitor_Process(void)
       } else {
           uint8_t elapsed = (uint8_t)(system_time_1s - NTC_stable_start_time_s);
           if (elapsed >= TEMP_STABLE_DURATION_S) {
-              // Both temperature and power are stable → record as reference
+              // Both temperature and power are stable ??? record as reference
               NTC_stable_power_level = power_level;
               NTC_stable_temp  = IGBT_TEMP_C;
               NTC_monitor_state = TEMP_STABLE_READY;
@@ -294,14 +294,14 @@ void NTC_monitor_Process(void)
     /* --- State 3: Monitor temperature reaction after power change --- */
     case TEMP_MONITORING:
       if (IGBT_TEMP_C != NTC_stable_temp || power_level == NTC_stable_power_level) {
-          // Temperature changed → normal behavior
-          // Power reverted to original → cancel monitoring
+          // Temperature changed ??? normal behavior
+          // Power reverted to original ??? cancel monitoring
           NTC_monitor_state = TEMP_IDLE;
           NTC_stable_start_time_s = (uint8_t)system_time_1s;
       } else {
           uint8_t elapsed = (uint8_t)(system_time_1s - NTC_monitor_start_time_s);
           if (elapsed >= TEMP_MONITOR_DURATION_S) {
-              // Temperature remained unchanged for entire monitoring period → raise fault
+              // Temperature remained unchanged for entire monitoring period ??? raise fault
               error_flags.f.IGBT_sensor_fault2 = 1;
               NTC_monitor_state = TEMP_IDLE;
               NTC_stable_start_time_s = (uint8_t)system_time_1s;

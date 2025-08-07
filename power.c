@@ -172,7 +172,7 @@ const LookupEntry code lookupTable[TABLE_SIZE] = {
 };
 // To save computational resources on an 8-bit MCU, we use fixed-point arithmetic.
 // We choose SCALE_BITS = 8 (i.e., multiply by 256).
-// The fixed slope is 3.614397; its fixed-point representation is: 3.614397 * 256 ≈ 925.
+// The fixed slope is 3.614397; its fixed-point representation is: 3.614397 * 256 ??? 925.
 #define SCALE_BITS 8
 #define FIXED_SLOPE 925
 
@@ -283,7 +283,7 @@ void Quick_Change_Detect() {
         PW0M = 0;
         PWM_INTERRUPT_DISABLE;
     }
-		
+    
     // === Power switching status check ===
     if (f_power_switching) {
         if  (cntdown_timer_expired(CNTDOWN_TIMER_POWER_SWITCHING)) {
@@ -406,7 +406,7 @@ void Heat_Control(void)
     return;
   }
   
-	if (last_power_level != power_level) {
+  if (last_power_level != power_level) {
     f_power_switching = 1;  //  Indicate power switching and pause protection
     last_power_level = power_level;
     cntdown_timer_start(CNTDOWN_TIMER_POWER_SWITCHING, 2000); // Start 2s countdown
@@ -415,7 +415,7 @@ void Heat_Control(void)
   // Normal heating mode
   if (power_level >= 4) {
     
-  // NOTE: power capping is currently disabled — always use the requested power HCW***
+  // NOTE: power capping is currently disabled ??? always use the requested power HCW***
 //    // If power_setting exceeds 1000W and IGBT heat warning is active, apply power cap at 1000W to prevent thermal stress.
 //    if (warning_flags.f.IGBT_heat_warning) {
 //        target_power = 1000000;
@@ -598,21 +598,21 @@ void Periodic_Power_Control(void) {
       break;
 
     case PERIODIC_HEAT_PHASE:      
-		  #if BURST_MODE == BURST_MODE_BASIC
-				if (periodic_AC_sync_cnt >= BurstMode_basic_table[level].heat_cycle) 
+      #if BURST_MODE == BURST_MODE_BASIC
+        if (periodic_AC_sync_cnt >= BurstMode_basic_table[level].heat_cycle) 
         {      
           periodic_AC_sync_cnt = 0;
           phase_start_tick = system_ticks;
           periodic_heat_state = PERIODIC_HEAT_END_PHASE;
         }
       
-			#elif BURST_MODE == BURST_MODE_DYNAMIC
-				if (periodic_AC_sync_cnt >= BurstMode_dynamic_table[level][pattern_index].heat_cycle)				
-				{
-					periodic_AC_sync_cnt = 0;
-					phase_start_tick = system_ticks;
-					periodic_heat_state = PERIODIC_HEAT_END_PHASE;
-				}
+      #elif BURST_MODE == BURST_MODE_DYNAMIC
+        if (periodic_AC_sync_cnt >= BurstMode_dynamic_table[level][pattern_index].heat_cycle)				
+        {
+          periodic_AC_sync_cnt = 0;
+          phase_start_tick = system_ticks;
+          periodic_heat_state = PERIODIC_HEAT_END_PHASE;
+        }
       #endif
       break;
 
