@@ -5,6 +5,49 @@
 - 所有程式碼、變數命名、註解請使用英文。
 - 若需要解釋程式碼，請用繁體中文說明。
 
+
+
+# Copilot Instructions for SN8F5602 Induction Cooker Project
+
+## Project Overview
+
+- This is a firmware development project for the SONiX SN8F5602 microcontroller, designed for induction heating applications (e.g., induction cookers).
+- Each module typically consists of a `.c` and `.h` file pair.
+- The main application logic is implemented in `main.c`.
+
+## Architecture & Data Flow
+
+- The main control loop in `main.c` uses a cooperative task scheduler, executing tasks such as heat control, power control, and temperature measurement through a `TaskType` state machine.
+- Tasks are executed every 125 microseconds, triggered by a timer interrupt flag (`ISR_f_125us`).
+- Communication between modules is handled via global variables and function calls.
+- No operating system or RTOS is used.
+- Interrupt Service Routines (ISRs) set flags, which are polled and cleared in the main loop.
+
+## Project-Specific Conventions
+
+- All time-based logic is based on the 125us tick from Timer0. Delay and scheduling mechanisms rely on counters incremented by ISR flags.
+- The watchdog timer (`WDTR = 0x5A`) is cleared frequently in both the main loop and delay routines to prevent unexpected resets.
+- Magic numbers (e.g., delay counts) are commonly used and should be documented with comments or macros.
+- Error handling is centralized in the `Error_Process()` function.
+- The system state is managed via global variables.
+- Task switching is explicit: after each task finishes, `current_task` is updated to the next state.
+
+## Integration Points
+
+- Hardware-specific headers (e.g., `<SN8F5602.h>`) must be included to access register definitions.
+
+## Examples & Development Patterns
+
+- To add a new hardware feature, create a corresponding `feature.c` / `feature.h` file and initialize it in `main.c`.
+- To add a new scheduled task, update the `TaskType` enum and extend the `switch(current_task)` block in `main.c`.
+- All time-related logic should be based on ISR flags and counters—--avoid using busy-wait loops--.
+
+## Key Files
+
+- `main.c` – Main loop, system initialization, and task scheduler.
+- `system.c/h` – System-wide flags, timing functions, and error handling.
+
+
 ## Refactor Checklist
 - [結構優化] 是否將功能模組化？每個 .c/.h 檔是否只負責單一功能？
 - [硬體抽象化] 是否將硬體相關邏輯抽離為 HAL 或 driver 層？

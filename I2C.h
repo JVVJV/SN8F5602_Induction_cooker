@@ -27,7 +27,8 @@
 #define	mskI2CMX                        (1<<3)
 
 
-#define I2C_BUFFER_SIZE  3  // **最大緩衝區長度**
+#define I2C_BUFFER_SIZE  3    // Max buffer size including checksum
+
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 extern volatile bit ISR_f_i2c_power_received;

@@ -45,7 +45,8 @@
 
 
 /*_____ M A C R O S ________________________________________________________*/
-#define START_ADC_CONVERSION  (ADM |= mskADS)
+#define ADC_SAMPLE_COUNT        4
+#define START_ADC_CONVERSION    (ADM |= mskADS)
 #define IS_ADC_FINISH   (ADM&mskEOC)
 #define CLEAR_EOC       (ADM &= ~mskEOC)
 #define GET_ADC_RESULT  ((ADB<<4)|(ADR&0x0F))

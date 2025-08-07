@@ -11,15 +11,13 @@
 #include "timer2.h"
 
 /*_____ D E F I N I T I O N S ______________________________________________*/
-#define SLAVE_ADDRESS  0x55
-
 #define I2C_WRITE_MODE  0
 #define I2C_READ_MODE   1
 
 /*_____ D E C L A R A T I O N S ____________________________________________*/
 volatile uint8_t* I2C_Buf; 
-uint8_t I2C_Slave_Address;
-uint8_t I2C_Length;
+uint8_t _I2C_Slave_Address;
+uint8_t _I2C_Length;
 
 volatile bit I2C_Mode;
 volatile uint8_t I2C_Index;                 // Index into I2C_Buf for current transfer
@@ -81,14 +79,14 @@ void I2C_Write(uint8_t slave_addr, uint8_t *databuf, uint8_t length) {
     length++;
 
     /* Set up transfer parameters */
-    I2C_Slave_Address = slave_addr;
+    _I2C_Slave_Address = slave_addr;
     I2C_Buf = databuf;
-    I2C_Length = length;
+    _I2C_Length = length;
     I2C_Index = 0;
     I2C_Mode = I2C_WRITE_MODE;
 
     /* Generate START condition */
-    I2CCON |= mskI2CCON_I2C_STA; // **啟動 I2C**
+    I2CCON |= mskI2CCON_I2C_STA;
 }
 
 /**
@@ -99,14 +97,14 @@ void I2C_Write(uint8_t slave_addr, uint8_t *databuf, uint8_t length) {
  */
 void I2C_Read(uint8_t slave_addr, uint8_t *databuf, uint8_t length) {
     /* Set up transfer parameters */
-    I2C_Slave_Address = slave_addr;
+    _I2C_Slave_Address = slave_addr;
     I2C_Buf = databuf;
-    I2C_Length = length;
+    _I2C_Length = length;
     I2C_Index = 0;
     I2C_Mode = I2C_READ_MODE;
 
     /* Generate START condition */
-    I2CCON |= mskI2CCON_I2C_STA; // **啟動 I2C**
+    I2CCON |= mskI2CCON_I2C_STA;
 }
 
 
@@ -122,18 +120,18 @@ void I2C_ISR(void) interrupt ISRI2c {
     switch (I2CSTA) {
         case 0x08: // **Start Condition Transmitted**
         case 0x10: // **Repeated Start**
-            I2CDAT = (I2C_Slave_Address << 1) | I2C_Mode;
+            I2CDAT = (_I2C_Slave_Address << 1) | I2C_Mode;
             break;
 
         case 0x18: // **Address ACKed (TX Mode)**
         case 0x28: // **Data ACKed (TX Mode)**
             I2CCON &= ~mskI2CCON_I2C_STA;
         
-            if (I2C_Index < I2C_Length) {
+            if (I2C_Index < _I2C_Length) {
               I2CDAT = I2C_Buf[I2C_Index++];
             } else {
               I2CCON &= ~mskI2CCON_I2C_STA;
-              I2CCON |= mskI2CCON_I2C_STO;  // **發送 Stop**
+              I2CCON |= mskI2CCON_I2C_STO;  // issue Stop
               I2C_Index = 0;
             }
             break;
@@ -141,17 +139,17 @@ void I2C_ISR(void) interrupt ISRI2c {
         case 0x20: // **Address NACK (TX Mode)**
         case 0x30: // **Data NACK (TX Mode)**
             I2CCON &= ~mskI2CCON_I2C_STA;
-            I2CCON |= mskI2CCON_I2C_STO;  // **發送 Stop**
+            I2CCON |= mskI2CCON_I2C_STO;  // issue Stop
             I2C_Index = 0;
             break;
 
         case 0x40: // **Address ACKed (RX Mode)**
             I2CCON &= ~mskI2CCON_I2C_STA;
         
-            if (I2C_Index < I2C_Length - 1) {
-                I2CCON |= mskI2CCON_I2C_AA;  // **繼續接收**
+            if (I2C_Index < _I2C_Length - 1) {
+                I2CCON |= mskI2CCON_I2C_AA;  // continue receiving
             } else {
-                I2CCON &= ~mskI2CCON_I2C_AA; // **最後一個字節**
+                I2CCON &= ~mskI2CCON_I2C_AA; // last byte
             }
             break;
         
@@ -161,19 +159,19 @@ void I2C_ISR(void) interrupt ISRI2c {
             break;
         case 0x50: // **Data ACKed (RX Mode)**
             I2C_Buf[I2C_Index++] = I2CDAT;
-            if (I2C_Index < I2C_Length - 1) {
-                I2CCON |= mskI2CCON_I2C_AA;  // **繼續接收**
+            if (I2C_Index < _I2C_Length - 1) {
+                I2CCON |= mskI2CCON_I2C_AA;  // continue receiving
             } else {
-                I2CCON &= ~mskI2CCON_I2C_AA; // **最後一個字節**
+                I2CCON &= ~mskI2CCON_I2C_AA; // last byte
             }
             break;
 
         case 0x58: // **Data NACKed (RX Mode)**
             I2C_Buf[I2C_Index++] = I2CDAT;
             I2CCON &= ~mskI2CCON_I2C_AA;
-            I2CCON |= mskI2CCON_I2C_STO;  // **發送 Stop**
+            I2CCON |= mskI2CCON_I2C_STO;  // issue Stop
             I2C_Index = 0;
-            // **驗證 Checksum**
+            // Verify Checksum
             if (I2C_Buf[1] == ~(I2C_Buf[0])) {  
                 ISR_f_i2c_power_received = 1; // power received
             } else {
@@ -184,16 +182,18 @@ void I2C_ISR(void) interrupt ISRI2c {
         case 0xF8: // **Bus Error**
         default:
             I2C_Index = 0;
+            
+            // I2C ErrorRecovery
             I2CCON &= ~mskI2CCON_I2C_STA;
             I2CCON |= mskI2CCON_I2C_STO;
-            
-            I2CCON &= ~mskI2CCON_I2C_ENABLE; //HCW***
+            I2CCON &= ~mskI2CCON_I2C_ENABLE;
             I2CCON |= mskI2CCON_I2C_ENABLE;
+            
             ISR_f_I2C_error = 1;            // bus error
             break;
     }
 
-    // **清除 I2C 旗標**
+    // Clear I2C flag
     I2CCON &= ~mskI2CCON_I2C_FLAG;
 }
 
