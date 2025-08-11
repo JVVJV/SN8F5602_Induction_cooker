@@ -64,10 +64,21 @@ void Start_Frequency_jitter(void);
 
 uint16_t current_lookup_interpolation(uint16_t adc_val);
 
+/**
+ * @brief Measures system power by sampling ADC values for current and voltage, accumulating them,
+ *        and calculating RMS values and power after a full AC cycle.
+ *
+ * This function updates global variables for voltage and current measurements, and sets flags
+ * indicating when new power data is available. It also resets accumulation counters after each cycle.
+ *
+ * Side effects:
+ *   - Updates voltage_adc_new, current_adc_new, voltage_RMS_V, current_RMS_mA, current_power.
+ *   - Sets f_power_updated and f_power_measure_ready when new data is ready.
+ *   - Resets accumulation counters via reset_power_read_data().
+ */
 void Power_read(void)
 {
   static uint16_t current_adc_avg = 0;
-//  static bit last_power_measure_valid = 0;   // Track previous state of f_power_measure_valid
  
   // Measure the system current & voltage
   ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &current_adc_new);
@@ -118,22 +129,6 @@ void Power_read(void)
     }
     
     reset_power_read_data();
-  }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-void measure_power_signals(void)
-{
-  // Measure system current using ADC
-  ADC_measure_4_avg(CURRENT_ADC_CHANNEL, &current_adc_new);
-  
-  // Measure AC voltage using ADC
-  ADC_measure_4_avg(VOLTAGE_ADC_CHANNEL, &voltage_adc_new);
-
-  // **Only accumulate the measured values when heating is active**
-  if (f_heating_initialized) {
-    current_adc_sum += current_adc_new;
-    voltage_adc_sum += voltage_adc_new;
   }
 }
 
